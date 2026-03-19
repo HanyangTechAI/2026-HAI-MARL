@@ -1,0 +1,23 @@
+# 1. 파이썬 기본 캐시 파일
+__pycache__/
+*.py[cod]
+*$py.class
+
+# 2. 가상환경 폴더
+.venv/
+venv/
+env/
+
+# 3. 실험 결과 및 데이터
+results/logs/*.csv
+results/logs/*.json
+results/plots/*.png
+results/plots/*.pdf
+
+# 4. 에디터 및 OS 설정 파일
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# 추가적으로 필요한 예외가 있으면 아래에 추가할 것
