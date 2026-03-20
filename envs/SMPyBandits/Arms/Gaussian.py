@@ -32,12 +32,14 @@ import numpy as np
 from scipy.special import erf
 
 # Local imports
-try:
-    from .Arm import Arm
-    from .kullback import klGauss
-except ImportError:
-    from Arm import Arm
-    from kullback import klGauss
+# try:
+#     from .Arm import Arm
+#     from .kullback import klGauss
+# except ImportError:
+#     from Arm import Arm
+#     from kullback import klGauss
+
+from .Arm import Arm
 
 oo = float('+inf')  # Nice way to write +infinity
 
@@ -91,13 +93,13 @@ class Gaussian(Arm):
 
     # --- Lower bound
 
-    def kl(self, x, y):
-        """ The kl(x, y) to use for this arm."""
-        return klGauss(x, y, self.sigma)
+    # def kl(self, x, y):
+    #     """ The kl(x, y) to use for this arm."""
+    #     return klGauss(x, y, self.sigma)
 
-    def oneLR(self, mumax, mu):
-        """ One term of the Lai & Robbins lower bound for Gaussian arms: (mumax - mu) / KL(mu, mumax). """
-        return (mumax - mu) / klGauss(mu, mumax, self.sigma)
+    # def oneLR(self, mumax, mu):
+    #     """ One term of the Lai & Robbins lower bound for Gaussian arms: (mumax - mu) / KL(mu, mumax). """
+    #     return (mumax - mu) / klGauss(mu, mumax, self.sigma)
 
     def oneHOI(self, mumax, mu):
         """ One term for the HOI factor for this arm."""

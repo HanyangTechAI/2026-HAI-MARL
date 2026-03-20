@@ -98,8 +98,8 @@ class MAB(object):
         self.minArm = np.min(self.means)  #: Min mean of arms
         print(" - with 'minArm' =", self.minArm)  # DEBUG
         # Print lower bound and HOI factor
-        print("\nThis MAB problem has: \n - a [Lai & Robbins] complexity constant C(mu) = {:.3g} ... \n - a Optimal Arm Identification factor H_OI(mu) = {:.2%} ...".format(self.lowerbound(), self.hoifactor()))  # DEBUG
-        print(" - with 'arms' represented as:", self.reprarms(1, latex=True))  # DEBUG
+        # print("\nThis MAB problem has: \n - a [Lai & Robbins] complexity constant C(mu) = {:.3g} ... \n - a Optimal Arm Identification factor H_OI(mu) = {:.2%} ...".format(self.lowerbound(), self.hoifactor()))  # DEBUG
+        # print(" - with 'arms' represented as:", self.reprarms(1, latex=True))  # DEBUG
 
     def new_order_of_arm(self, arms):
         """ Feed a new order of the arms to the environment.
