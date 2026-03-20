@@ -3,7 +3,7 @@ author: Julien Seznec
 Restless arm, i.e. arms with mean value which change at each round
 """
 try:
-    from . import Arm, Bernoulli, Binomial, UnboundedExponential, UnboundedGaussian, Constant, UnboundedPoisson
+    from .. import Arm, Bernoulli, Binomial, UnboundedExponential, UnboundedGaussian, Constant, UnboundedPoisson
 except ImportError:
     from Arm import Arm
     from Bernoulli import Bernoulli
