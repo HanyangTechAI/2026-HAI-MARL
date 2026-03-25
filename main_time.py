@@ -8,6 +8,7 @@ from datetime import datetime
 from envs.SMPyBandits.Environment.MAB import MAB
 from envs.SMPyBandits.Arms.Gaussian import Gaussian
 from envs.custom_evaluator import CustomEvaluator
+from envs.custom_arms import ShockArm, TrendArm, UniformArm
 from agents.epsilon_greedy import EpsilonGreedy
 
 def setup_logger(output_dir):
@@ -46,19 +47,26 @@ def main():
     logger.info(f"🚀 새로운 시뮬레이션 세션을 시작합니다. (저장 폴더: {output_dir})")
 
     # ==========================================
-    # 1. 시뮬레이션 설정
+    # 1. 시뮬레이션 설정 (다이내믹 마켓)
     # ==========================================
     HORIZON = 10000
-    np.random.seed(42)
-    logger.info(f"⚙️ 설정: Horizon={HORIZON}, Seed=42")
+    np.random.seed(77)
 
+    # 4가지 서로 다른 성격을 가진 주식들로 시장 구성!
     arm_configuration = [
-        Gaussian(0.10, 0.05),
-        Gaussian(0.02, 0.01),
-        Gaussian(-0.05, 0.10)
+        # 0번: 1) 처음부터 끝까지 고정된 우량주 (평균 5%)
+        Gaussian(0.05, 0.02),
+        
+        # 1번: 2) N번째에서 대폭락하는 작전주 (처음엔 10%로 좋다가, 3000 스텝 때 -10%로 폭락!)
+        ShockArm(initial_mean=0.10, final_mean=-0.10, shock_step=3000, variance=0.02),
+        
+        # 2번: 3) 꾸준히 우상향하는 성장주 (시작은 0%지만 매 스텝 0.00001씩 증가)
+        TrendArm(start_mean=0.0, slope=0.00001),
+        
+        # 3번: 4) 0 ~ 0.2(20%) 사이를 미친듯이 널뛰기하는 밈 주식 (평균 10%)
+        UniformArm(low=0.0, high=0.20)
     ]
     env = MAB(arm_configuration)
-    logger.info(f"📈 환경 세팅 완료: 총 {env.nbArms}개의 자산(Arm) 생성됨")
 
     # ==========================================
     # 2. 에이전트 라인업 구성
