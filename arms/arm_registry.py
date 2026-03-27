@@ -25,3 +25,21 @@ STATIONARY_REGISTRY = {
         "variance": 150.0
     }
 }
+
+EVENT_SHOCK_REGISTRY = {
+    "CA_FOODS_3": {
+        "description": "캘리포니아 스낵/파티류 (주말 파동 + 슈퍼볼 등 충격 극심)",
+        "base_mean": 7267.6,
+        "base_variance": 1200.0
+    },
+    "TX_FOODS_3": {
+        "description": "텍사스 스낵/파티류 (주말 파동 + 명절 충격)",
+        "base_mean": 4976.1,
+        "base_variance": 800.0
+    },
+    "WI_FOODS_3": {
+        "description": "위스콘신 스낵/파티류 (가장 변동성 큼)",
+        "base_mean": 4725.4,
+        "base_variance": 800.0
+    }
+}
