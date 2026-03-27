@@ -14,6 +14,9 @@ from arms.stationary_arm import StationaryArm
 from arms.event_shock_arm import EventShockArm
 from arms.arm_registry import STATIONARY_REGISTRY, EVENT_SHOCK_REGISTRY
 
+# 시각화 모듈
+from utils.plot_results import plot_experiment_results
+
 def setup_logger(output_dir):
     """실시간 출력과 파일 저장을 동시에 해주는 로거 설정"""
     logger = logging.getLogger("MARL_Logger")
@@ -54,8 +57,8 @@ def main():
 
     # 🌟 공통 환경 설정 (경로 및 스케일러)
     # 현재 실행 위치(root)를 기준으로 data 폴더 내의 csv 경로 지정
-    SHOCKS_FILE = os.path.join("backup", "data", "walmart", "extracted_data", "shocks_registry.csv")
-    SEASON_FILE = os.path.join("backup", "data", "walmart", "extracted_data", "seasonality_registry.csv")
+    SHOCKS_FILE = os.path.join("data", "walmart", "extracted_data", "shocks_registry.csv")
+    SEASON_FILE = os.path.join("data", "walmart", "extracted_data", "seasonality_registry.csv")
     GLOBAL_SCALER = 0.0001 # 보상을 [0, 1] 수준으로 정규화
 
     logger.info("📦 시뮬레이션 환경(Arm)을 조립합니다...")
@@ -97,7 +100,9 @@ def main():
     agents = [
         EpsilonGreedy(env.nbArms, epsilon=0.05, name="AI_Eps_0.05"),
         EpsilonGreedy(env.nbArms, epsilon=0.1, name="AI_Eps_0.1"),
-        EpsilonGreedy(env.nbArms, epsilon=0.2, name="AI_Eps_0.2")
+        EpsilonGreedy(env.nbArms, epsilon=0.2, name="AI_Eps_0.2"),
+        EpsilonGreedy(env.nbArms, epsilon=0.3, name="AI_Eps_0.3"),
+        EpsilonGreedy(env.nbArms, epsilon=0.5, name="AI_Eps_0.5")
     ]
     agent_names = [agent.name for agent in agents]
     logger.info(f"🤖 참여 에이전트 명단: {agent_names}")
@@ -123,7 +128,12 @@ def main():
     df_rewards.to_csv(rewards_path, index_label="Step")
     df_actions.to_csv(actions_path, index_label="Step")
 
-    logger.info("✅ 모든 작업이 성공적으로 끝났습니다!")
+    # 🌟 추가된 자동화 시각화 로직 🌟
+    logger.info("📊 시각화(Plotting) 모듈을 호출하여 분석 그래프를 생성합니다...")
+    # SCALER의 역수인 10000을 넘겨주어 그래프 Y축을 원래 단위로 복구합니다.
+    plot_experiment_results(output_dir, scaler=int(1/GLOBAL_SCALER))
+
+    logger.info("✅ 모든 작업 및 그래프 생성이 성공적으로 끝났습니다!")
 
 if __name__ == "__main__":
     main()
