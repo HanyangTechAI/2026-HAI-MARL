@@ -21,3 +21,4 @@ results/plots/*.pdf
 Thumbs.db
 
 # 추가적으로 필요한 예외가 있으면 아래에 추가할 것
+backup/
