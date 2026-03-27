@@ -6,28 +6,28 @@ from datetime import datetime
 
 # 커스텀 모듈 임포트
 from envs.SMPyBandits.Environment.MAB import MAB
-from envs.SMPyBandits.Arms.Gaussian import Gaussian
 from envs.custom_evaluator import CustomEvaluator
-from envs.custom_arms import ShockArm, TrendArm, UniformArm
 from agents.epsilon_greedy import EpsilonGreedy
+
+# 🌟 새롭게 설계한 다이내믹 환경 모듈 임포트
+from arms.stationary_arm import StationaryArm
+from arms.event_shock_arm import EventShockArm
+from arms.arm_registry import STATIONARY_REGISTRY, EVENT_SHOCK_REGISTRY
 
 def setup_logger(output_dir):
     """실시간 출력과 파일 저장을 동시에 해주는 로거 설정"""
     logger = logging.getLogger("MARL_Logger")
     logger.setLevel(logging.INFO)
     
-    # 기존 핸들러 초기화 (중복 출력 방지)
     if logger.hasHandlers():
         logger.handlers.clear()
 
     formatter = logging.Formatter('[%(asctime)s] %(message)s', datefmt='%H:%M:%S')
 
-    # 1. 터미널 출력용 (StreamHandler)
     console_handler = logging.StreamHandler()
     console_handler.setFormatter(formatter)
     logger.addHandler(console_handler)
 
-    # 2. 파일 저장용 (FileHandler)
     log_file_path = os.path.join(output_dir, "experiment.log")
     file_handler = logging.FileHandler(log_file_path, encoding='utf-8')
     file_handler.setFormatter(formatter)
@@ -37,50 +37,73 @@ def setup_logger(output_dir):
 
 def main():
     # ==========================================
-    # 0. 타임스탬프 폴더 생성 및 로거 셋팅 (먼저 해야 로그를 저장할 수 있음!)
+    # 0. 타임스탬프 폴더 생성 및 로거 셋팅
     # ==========================================
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     output_dir = os.path.join("output", timestamp)
     os.makedirs(output_dir, exist_ok=True)
 
     logger = setup_logger(output_dir)
-    logger.info(f"🚀 새로운 시뮬레이션 세션을 시작합니다. (저장 폴더: {output_dir})")
+    logger.info(f"🚀 새로운 월마트 시뮬레이션 세션을 시작합니다. (저장 폴더: {output_dir})")
 
     # ==========================================
-    # 1. 시뮬레이션 설정 (다이내믹 마켓)
+    # 1. 시뮬레이션 설정 (월마트 다이내믹 마켓)
     # ==========================================
-    HORIZON = 10000
+    HORIZON = 1941 # 월마트 데이터의 총 스텝(일수)
     np.random.seed(77)
 
-    # 4가지 서로 다른 성격을 가진 주식들로 시장 구성!
-    arm_configuration = [
-        # 0번: 1) 처음부터 끝까지 고정된 우량주 (평균 5%)
-        Gaussian(0.05, 0.02),
-        
-        # 1번: 2) N번째에서 대폭락하는 작전주 (처음엔 10%로 좋다가, 3000 스텝 때 -10%로 폭락!)
-        ShockArm(initial_mean=0.10, final_mean=-0.10, shock_step=3000, variance=0.02),
-        
-        # 2번: 3) 꾸준히 우상향하는 성장주 (시작은 0%지만 매 스텝 0.00001씩 증가)
-        TrendArm(start_mean=0.0, slope=0.00001),
-        
-        # 3번: 4) 0 ~ 0.2(20%) 사이를 미친듯이 널뛰기하는 밈 주식 (평균 10%)
-        UniformArm(low=0.0, high=0.20)
-    ]
+    # 🌟 공통 환경 설정 (경로 및 스케일러)
+    # 현재 실행 위치(root)를 기준으로 data 폴더 내의 csv 경로 지정
+    SHOCKS_FILE = os.path.join("backup", "data", "walmart", "extracted_data", "shocks_registry.csv")
+    SEASON_FILE = os.path.join("backup", "data", "walmart", "extracted_data", "seasonality_registry.csv")
+    GLOBAL_SCALER = 0.0001 # 보상을 [0, 1] 수준으로 정규화
+
+    logger.info("📦 시뮬레이션 환경(Arm)을 조립합니다...")
+    arm_configuration = []
+
+    # 1-A. 안정적인 캐시카우 라인업 선택 (STATIONARY_REGISTRY 활용)
+    selected_stationary = ["CA_FOODS_1", "TX_FOODS_1"]
+    for name in selected_stationary:
+        params = STATIONARY_REGISTRY[name]
+        arm = StationaryArm(
+            arm_name=name,
+            mean=params["mean"] * GLOBAL_SCALER,
+            variance=params["variance"] * (GLOBAL_SCALER ** 2) # 분산은 스케일러의 제곱을 곱해야 함!
+        )
+        arm_configuration.append(arm)
+        logger.info(f"  - [우량주] {name} 조립 완료")
+
+    # 1-B. 다이내믹 폭발 라인업 선택 (EVENT_SHOCK_REGISTRY 활용)
+    selected_shocks = ["CA_FOODS_3", "TX_FOODS_3", "WI_FOODS_3"]
+    for name in selected_shocks:
+        params = EVENT_SHOCK_REGISTRY[name]
+        arm = EventShockArm(
+            arm_name=name,
+            base_mean=params["base_mean"],
+            base_variance=params["base_variance"],
+            shocks_csv=SHOCKS_FILE,
+            season_csv=SEASON_FILE,
+            global_scaler=GLOBAL_SCALER
+        )
+        arm_configuration.append(arm)
+        logger.info(f"  - [다이내믹주] {name} 조립 완료")
+
     env = MAB(arm_configuration)
+    logger.info(f"📊 총 {env.nbArms}개의 물류 라인(Arm)이 전장에 배치되었습니다.")
 
     # ==========================================
     # 2. 에이전트 라인업 구성
     # ==========================================
     agents = [
+        EpsilonGreedy(env.nbArms, epsilon=0.05, name="AI_Eps_0.05"),
         EpsilonGreedy(env.nbArms, epsilon=0.1, name="AI_Eps_0.1"),
-        EpsilonGreedy(env.nbArms, epsilon=0.2, name="AI_Eps_0.2"),
-        EpsilonGreedy(env.nbArms, epsilon=0.3, name="AI_Eps_0.3")
+        EpsilonGreedy(env.nbArms, epsilon=0.2, name="AI_Eps_0.2")
     ]
     agent_names = [agent.name for agent in agents]
     logger.info(f"🤖 참여 에이전트 명단: {agent_names}")
 
     # ==========================================
-    # 3. 심판 배정 및 시뮬레이션 실행 (tqdm 바가 터미널에 그려짐)
+    # 3. 심판 배정 및 시뮬레이션 실행
     # ==========================================
     logger.info("⚔️ 시뮬레이션을 가동합니다...")
     evaluator = CustomEvaluator(env, agents, horizon=HORIZON)

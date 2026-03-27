@@ -4,7 +4,7 @@ import os
 import numpy as np
 
 # 💡 분석하고 싶은 실험의 타임스탬프 폴더 경로를 여기에 넣으세요!
-CSV_DIR = "output/20260325_181221"
+CSV_DIR = "output/20260327_132358"
 
 def plot_and_save_individual_metrics(csv_dir):
     rewards_path = os.path.join(csv_dir, "rewards_log.csv")
