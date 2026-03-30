@@ -23,7 +23,17 @@ STATIONARY_REGISTRY = {
         "description": "캘리포니아 생활용품 (수요 적음, 꾸준함)",
         "mean": 1200.0,
         "variance": 150.0
-    }
+    },
+    "CA_HOBBIES_2": {
+        "description": "캘리포니아 취미용품 (수요 적고 변동성 낮음)",
+        "mean": 800.0,
+        "variance": 100.0
+    },
+    "TX_HOUSEHOLD_2": {
+        "description": "텍사스 생활용품 (수요 적음, 꾸준함)",
+        "mean": 1000.0,
+        "variance": 120.0
+    },
 }
 
 EVENT_SHOCK_REGISTRY = {

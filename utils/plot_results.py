@@ -86,6 +86,7 @@ def plot_experiment_results(csv_dir, scaler=10000):
     # [Phase 2] 에이전트별 미시적 행동 분석 (Micro Analysis) 🌟 추가됨
     # ===================================================
     print("📂 에이전트별 심층 분석 폴더 및 행동 변화 그래프를 생성합니다...")
+    import seaborn as sns
     
     # Arm의 총 개수 파악 (컬러맵 매칭을 위해)
     unique_arms = np.sort(pd.unique(df_actions.values.ravel()))
@@ -125,7 +126,27 @@ def plot_experiment_results(csv_dir, scaler=10000):
         plt.tight_layout()
         plt.savefig(os.path.join(agent_dir, f"{agent_name}_action_transition.png"), dpi=200)
         plt.close()
-
+        
+        # 4. 행동 변화 Heatmap(100)
+        WINDOW_SIZE = 100
+        
+        df_agent = pd.DataFrame({'Action': agent_actions})
+        df_agent['Time_Bin'] = (df_agent.index // WINDOW_SIZE) * WINDOW_SIZE
+        heatmap_data = pd.crosstab(df_agent['Action'], df_agent['Time_Bin'])
+        heatmap_data = heatmap_data.reindex(unique_arms, fill_value=0) # 모든 Arm이 행에 존재하도록 보장
+        
+        plt.figure(figsize=(12, 6))
+        sns.heatmap(heatmap_data, cmap='Blues', cbar_kws={'label': 'Selection Count'})
+        
+        plt.title(f"Arm Selection Heatmap (100-Step Bins)\n({agent_name})", fontsize=14, fontweight='bold')
+        plt.xlabel("Time Bins (100 Steps)")
+        plt.ylabel("Arm")
+        
+        plt.yticks(rotation=0) # Arm 번호가 수평으로 보이도록
+        plt.tight_layout()
+        plt.savefig(os.path.join(agent_dir, f"{agent_name}_action_heatmap.png"), dpi=200)
+        plt.close()
+        
     print(f"✅ 모든 시각화 작업이 완료되었습니다! 폴더를 확인하세요: {csv_dir}")
 
 # 단독으로 실행할 때를 대비한 코드

@@ -8,11 +8,15 @@ from datetime import datetime
 from envs.SMPyBandits.Environment.MAB import MAB
 from envs.custom_evaluator import CustomEvaluator
 from agents.epsilon_greedy import EpsilonGreedy
+from agents.ucb import UCBAgent
+from agents.softmax import SoftmaxAgent
 
 # 🌟 새롭게 설계한 다이내믹 환경 모듈 임포트
 from arms.stationary_arm import StationaryArm
 from arms.event_shock_arm import EventShockArm
-from arms.arm_registry import STATIONARY_REGISTRY, EVENT_SHOCK_REGISTRY
+from arms.trend_arm import TrendArm
+from arms.switch_arm import SwitchArm
+from arms.arm_registry import STATIONARY_REGISTRY, EVENT_SHOCK_REGISTRY, TREND_REGISTRY, SWITCH_REGISTRY
 
 # 시각화 모듈
 from utils.plot_results import plot_experiment_results
@@ -53,19 +57,20 @@ def main():
     # 1. 시뮬레이션 설정 (월마트 다이내믹 마켓)
     # ==========================================
     HORIZON = 1941 # 월마트 데이터의 총 스텝(일수)
-    np.random.seed(77)
+    np.random.seed(66)
 
     # 🌟 공통 환경 설정 (경로 및 스케일러)
     # 현재 실행 위치(root)를 기준으로 data 폴더 내의 csv 경로 지정
     SHOCKS_FILE = os.path.join("data", "walmart", "extracted_data", "shocks_registry.csv")
     SEASON_FILE = os.path.join("data", "walmart", "extracted_data", "seasonality_registry.csv")
+    SWITCH_FILE = os.path.join("data", "walmart", "switched_data", "regime_switches.csv")
     GLOBAL_SCALER = 0.0001 # 보상을 [0, 1] 수준으로 정규화
 
     logger.info("📦 시뮬레이션 환경(Arm)을 조립합니다...")
     arm_configuration = []
 
     # 1-A. 안정적인 캐시카우 라인업 선택 (STATIONARY_REGISTRY 활용)
-    selected_stationary = ["CA_FOODS_1", "TX_FOODS_1"]
+    selected_stationary = ["CA_HOBBIES_2", "TX_HOUSEHOLD_2"]
     for name in selected_stationary:
         params = STATIONARY_REGISTRY[name]
         arm = StationaryArm(
@@ -91,7 +96,36 @@ def main():
         arm_configuration.append(arm)
         logger.info(f"  - [다이내믹주] {name} 조립 완료")
 
+    # 1-C. 장기 트렌드 성장형 라인업 (Trend)
+    selected_trends = ["CA_HOUSEHOLD_1", "WI_FOODS_2"]
+    for name in selected_trends:
+        params = TREND_REGISTRY[name]
+        arm = TrendArm(
+            arm_name=name,
+            start_mean=params["start_mean"] * GLOBAL_SCALER,
+            slope=params["slope"] * GLOBAL_SCALER,
+            variance=params["variance"] * (GLOBAL_SCALER ** 2),
+            global_scaler=GLOBAL_SCALER
+        )
+        arm_configuration.append(arm)
+        logger.info(f"  - [트렌드주] {name} 조립 완료")
+
+    # 1-D. 국면 전환형 라인업 (Switch)
+    selected_switches = ["TX_HOBBIES_2", "WI_HOBBIES_2"]
+    for name in selected_switches:
+        params = SWITCH_REGISTRY[name]
+        arm = SwitchArm(
+            arm_name=name,
+            base_mean=params["base_mean"],
+            base_variance=params["base_variance"],
+            switch_csv=SWITCH_FILE,
+            global_scaler=GLOBAL_SCALER
+        )
+        arm_configuration.append(arm)
+        logger.info(f"  - [전환주] {name} 조립 완료")
+
     env = MAB(arm_configuration)
+    
     logger.info(f"📊 총 {env.nbArms}개의 물류 라인(Arm)이 전장에 배치되었습니다.")
 
     # ==========================================
@@ -102,7 +136,11 @@ def main():
         EpsilonGreedy(env.nbArms, epsilon=0.1, name="AI_Eps_0.1"),
         EpsilonGreedy(env.nbArms, epsilon=0.2, name="AI_Eps_0.2"),
         EpsilonGreedy(env.nbArms, epsilon=0.3, name="AI_Eps_0.3"),
-        EpsilonGreedy(env.nbArms, epsilon=0.5, name="AI_Eps_0.5")
+        EpsilonGreedy(env.nbArms, epsilon=0.5, name="AI_Eps_0.5"),
+        UCBAgent(env.nbArms, c=1.0, name="AI_UCB_c1.0"),
+        UCBAgent(env.nbArms, c=2.0, name="AI_UCB_c2.0"),
+        SoftmaxAgent(env.nbArms, temperature=0.5, name="AI_Softmax_T0.5"),
+        SoftmaxAgent(env.nbArms, temperature=1.0, name="AI_Softmax_T1.0")
     ]
     agent_names = [agent.name for agent in agents]
     logger.info(f"🤖 참여 에이전트 명단: {agent_names}")
