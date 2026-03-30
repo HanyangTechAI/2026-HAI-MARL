@@ -43,3 +43,31 @@ EVENT_SHOCK_REGISTRY = {
         "base_variance": 800.0
     }
 }
+
+TREND_REGISTRY = {
+    "CA_HOUSEHOLD_1": {
+        "description": "캘리포니아 생활용품 (수요 적음, 꾸준함)",
+        "start_mean": 1200.0,
+        "slope": 0.5,  # 매일 0.5씩 평균이 증가하는 성장주
+        "variance": 150.0
+    },
+    "WI_FOODS_2": {
+        "description": "위스콘신 냉동식품 (점점 인기가 떨어지는 사양산업)",
+        "start_mean": 3000.0,
+        "slope": -0.3, # 매일 0.3씩 평균이 감소하는 사양산업
+        "variance": 400.0
+    }
+}
+
+SWITCH_REGISTRY = {
+    "TX_HOBBIES_2": {
+        "description": "텍사스 취미용품",
+        "base_mean": 800.0,
+        "base_variance": 100.0
+    },
+    "WI_HOBBIES_2": {
+        "description": "위스콘신 취미용품",
+        "base_mean": 900.0,
+        "base_variance": 120.0
+    }
+}
