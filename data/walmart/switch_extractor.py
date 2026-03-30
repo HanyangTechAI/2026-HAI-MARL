@@ -18,8 +18,8 @@ def detect_regime_changes():
     depts = sales['dept_id'].unique()
     
     regime_list = []
-    WINDOW = 60 # 60일 단위로 과거/미래 체질 비교
-    THRESHOLD = 0.30 # 평균이 30% 이상 변해야 국면 전환으로 인정
+    WINDOW = 50 # 60일 단위로 과거/미래 체질 비교
+    THRESHOLD = 0.20 # 평균이 30% 이상 변해야 국면 전환으로 인정
 
     for state in states:
         for dept in depts:

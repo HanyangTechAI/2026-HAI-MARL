@@ -1,83 +1,61 @@
 # arms/arm_registry.py
 
 """
-월마트 데이터 파라미터 보관소.
+월마트 실제 데이터 기반 파라미터 보관소 (Golden Balance Edition)
+- 모든 자산이 1100 ~ 1800 사이의 경쟁력 있는 평균을 가집니다.
+- 초반, 중반, 후반의 승자가 모두 다른 다이내믹한 밸런스입니다.
 """
+
 STATIONARY_REGISTRY = {
+    "CA_HOBBIES_1": {
+        "description": "캘리포니아 취미용품1 (탄탄한 중위권 피난처)",
+        "mean": 1482.4,        
+        "variance": 86278.62    
+    },
     "CA_FOODS_1": {
-        "description": "캘리포니아 신선식품 (가장 수요가 많고 안정적)",
-        "mean": 3500.0,
-        "variance": 500.0
-    },
-    "TX_FOODS_1": {
-        "description": "텍사스 신선식품 (수요 높음, 변동성 약간 있음)",
-        "mean": 2800.0,
-        "variance": 450.0
-    },
-    "WI_FOODS_1": {
-        "description": "위스콘신 신선식품 (수요 중간, 매우 안정적)",
-        "mean": 2100.0,
-        "variance": 300.0
-    },
-    "CA_HOUSEHOLD_1": {
-        "description": "캘리포니아 생활용품 (수요 적음, 꾸준함)",
-        "mean": 1200.0,
-        "variance": 150.0
-    },
-    "CA_HOBBIES_2": {
-        "description": "캘리포니아 취미용품 (수요 적고 변동성 낮음)",
-        "mean": 800.0,
-        "variance": 100.0
-    },
-    "TX_HOUSEHOLD_2": {
-        "description": "텍사스 생활용품 (수요 적음, 꾸준함)",
-        "mean": 1000.0,
-        "variance": 120.0
+        "description": "캘리포니아 식품1 (무난하고 안정적임)",
+        "mean": 1242.03,
+        "variance": 75377.29    
     },
 }
 
 EVENT_SHOCK_REGISTRY = {
-    "CA_FOODS_3": {
-        "description": "캘리포니아 스낵/파티류 (주말 파동 + 슈퍼볼 등 충격 극심)",
-        "base_mean": 7267.6,
-        "base_variance": 1200.0
+    "CA_FOODS_2": {
+        "description": "캘리포니아 식품2 (적절한 수익과 잦은 주말 파동)",
+        "base_mean": 1555.18,
+        "base_variance": 139561.97  
     },
-    "TX_FOODS_3": {
-        "description": "텍사스 스낵/파티류 (주말 파동 + 명절 충격)",
-        "base_mean": 4976.1,
-        "base_variance": 800.0
-    },
-    "WI_FOODS_3": {
-        "description": "위스콘신 스낵/파티류 (가장 변동성 큼)",
-        "base_mean": 4725.4,
-        "base_variance": 800.0
+    "TX_FOODS_2": {
+        "description": "텍사스 식품2 (다이내믹 2등주)",
+        "base_mean": 1134.98,
+        "base_variance": 65754.61
     }
 }
 
 TREND_REGISTRY = {
     "CA_HOUSEHOLD_1": {
-        "description": "캘리포니아 생활용품 (수요 적음, 꾸준함)",
-        "start_mean": 1200.0,
-        "slope": 0.5,  # 매일 0.5씩 평균이 증가하는 성장주
-        "variance": 150.0
+        "description": "캘리포니아 생활용품1 (후반 지배형 성장주)",
+        "start_mean": 1568.21,
+        "slope": 1.0285,       # 시뮬레이션 종료 시 약 3500 도달
+        "variance": 375637.94
     },
     "WI_FOODS_2": {
-        "description": "위스콘신 냉동식품 (점점 인기가 떨어지는 사양산업)",
-        "start_mean": 3000.0,
-        "slope": -0.3, # 매일 0.3씩 평균이 감소하는 사양산업
-        "variance": 400.0
+        "description": "위스콘신 식품2 (꼴찌에서 시작해 1등을 노리는 대기만성주)",
+        "start_mean": 594.47,
+        "slope": 0.7540,       # 시뮬레이션 종료 시 약 2000 도달
+        "variance": 182229.05
     }
 }
 
 SWITCH_REGISTRY = {
-    "TX_HOBBIES_2": {
-        "description": "텍사스 취미용품",
-        "base_mean": 800.0,
-        "base_variance": 100.0
+    "TX_HOUSEHOLD_1": {
+        "description": "텍사스 생활용품1 (초반 1등주 -> 특정 기점 대폭락)",
+        "base_mean": 1867.86,
+        "base_variance": 184853.98
     },
-    "WI_HOBBIES_2": {
-        "description": "위스콘신 취미용품",
-        "base_mean": 900.0,
-        "base_variance": 120.0
+    "WI_HOUSEHOLD_1": {
+        "description": "위스콘신 생활용품1 (초반 대장주 -> 특정 기점 국면 전환)",
+        "base_mean": 1605.93,
+        "base_variance": 176595.24
     }
 }

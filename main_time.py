@@ -10,6 +10,7 @@ from envs.custom_evaluator import CustomEvaluator
 from agents.epsilon_greedy import EpsilonGreedy
 from agents.ucb import UCBAgent
 from agents.softmax import SoftmaxAgent
+from agents.wsls import WSLS
 
 # 🌟 새롭게 설계한 다이내믹 환경 모듈 임포트
 from arms.stationary_arm import StationaryArm
@@ -70,19 +71,19 @@ def main():
     arm_configuration = []
 
     # 1-A. 안정적인 캐시카우 라인업 선택 (STATIONARY_REGISTRY 활용)
-    selected_stationary = ["CA_HOBBIES_2", "TX_HOUSEHOLD_2"]
+    selected_stationary = ["CA_HOBBIES_1", "CA_FOODS_1"]
     for name in selected_stationary:
         params = STATIONARY_REGISTRY[name]
         arm = StationaryArm(
             arm_name=name,
-            mean=params["mean"] * GLOBAL_SCALER,
-            variance=params["variance"] * (GLOBAL_SCALER ** 2) # 분산은 스케일러의 제곱을 곱해야 함!
-        )
+            mean=params["mean"],
+            variance=params["variance"]
+            )
         arm_configuration.append(arm)
         logger.info(f"  - [우량주] {name} 조립 완료")
 
     # 1-B. 다이내믹 폭발 라인업 선택 (EVENT_SHOCK_REGISTRY 활용)
-    selected_shocks = ["CA_FOODS_3", "TX_FOODS_3", "WI_FOODS_3"]
+    selected_shocks = ["CA_FOODS_2", "TX_FOODS_2"]
     for name in selected_shocks:
         params = EVENT_SHOCK_REGISTRY[name]
         arm = EventShockArm(
@@ -90,8 +91,7 @@ def main():
             base_mean=params["base_mean"],
             base_variance=params["base_variance"],
             shocks_csv=SHOCKS_FILE,
-            season_csv=SEASON_FILE,
-            global_scaler=GLOBAL_SCALER
+            season_csv=SEASON_FILE
         )
         arm_configuration.append(arm)
         logger.info(f"  - [다이내믹주] {name} 조립 완료")
@@ -102,24 +102,22 @@ def main():
         params = TREND_REGISTRY[name]
         arm = TrendArm(
             arm_name=name,
-            start_mean=params["start_mean"] * GLOBAL_SCALER,
-            slope=params["slope"] * GLOBAL_SCALER,
-            variance=params["variance"] * (GLOBAL_SCALER ** 2),
-            global_scaler=GLOBAL_SCALER
+            start_mean=params["start_mean"],
+            slope=params["slope"],
+            variance=params["variance"]
         )
         arm_configuration.append(arm)
         logger.info(f"  - [트렌드주] {name} 조립 완료")
 
     # 1-D. 국면 전환형 라인업 (Switch)
-    selected_switches = ["TX_HOBBIES_2", "WI_HOBBIES_2"]
+    selected_switches = ["TX_HOUSEHOLD_1", "WI_HOUSEHOLD_1"]
     for name in selected_switches:
         params = SWITCH_REGISTRY[name]
         arm = SwitchArm(
             arm_name=name,
             base_mean=params["base_mean"],
             base_variance=params["base_variance"],
-            switch_csv=SWITCH_FILE,
-            global_scaler=GLOBAL_SCALER
+            switch_csv=SWITCH_FILE
         )
         arm_configuration.append(arm)
         logger.info(f"  - [전환주] {name} 조립 완료")
@@ -135,12 +133,14 @@ def main():
         EpsilonGreedy(env.nbArms, epsilon=0.05, name="AI_Eps_0.05"),
         EpsilonGreedy(env.nbArms, epsilon=0.1, name="AI_Eps_0.1"),
         EpsilonGreedy(env.nbArms, epsilon=0.2, name="AI_Eps_0.2"),
-        EpsilonGreedy(env.nbArms, epsilon=0.3, name="AI_Eps_0.3"),
-        EpsilonGreedy(env.nbArms, epsilon=0.5, name="AI_Eps_0.5"),
-        UCBAgent(env.nbArms, c=0.01, name="AI_UCB_0.01"),
-        UCBAgent(env.nbArms, c=0.05, name="AI_UCB_0.05"),
+        # EpsilonGreedy(env.nbArms, epsilon=0.3, name="AI_Eps_0.3"),
+        # EpsilonGreedy(env.nbArms, epsilon=0.5, name="AI_Eps_0.5"),
+        UCBAgent(env.nbArms, c=0.1, name="AI_UCB_0.1"),
+        UCBAgent(env.nbArms, c=0.15, name="AI_UCB_0.15"),
         SoftmaxAgent(env.nbArms, temperature=0.05, name="AI_Softmax_0.05"),
-        SoftmaxAgent(env.nbArms, temperature=0.1, name="AI_Softmax_0.1")
+        SoftmaxAgent(env.nbArms, temperature=0.1, name="AI_Softmax_0.1"),
+        WSLS(env.nbArms, initial_aspiration=0.12, aspiration_lr=0.05, name="WSLS_I0.12_LR0.05"),
+        WSLS(env.nbArms, initial_aspiration=0.15, aspiration_lr=0.1, name="WSLS_I0.15_LR0.1")
     ]
     agent_names = [agent.name for agent in agents]
     logger.info(f"🤖 참여 에이전트 명단: {agent_names}")
@@ -149,7 +149,7 @@ def main():
     # 3. 심판 배정 및 시뮬레이션 실행
     # ==========================================
     logger.info("⚔️ 시뮬레이션을 가동합니다...")
-    evaluator = CustomEvaluator(env, agents, horizon=HORIZON)
+    evaluator = CustomEvaluator(env, agents, horizon=HORIZON, global_scaler=GLOBAL_SCALER)
     rewards_log, actions_log = evaluator.run_simulation()
     logger.info("🏁 시뮬레이션 루프 완료!")
 
