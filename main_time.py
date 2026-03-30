@@ -137,10 +137,10 @@ def main():
         EpsilonGreedy(env.nbArms, epsilon=0.2, name="AI_Eps_0.2"),
         EpsilonGreedy(env.nbArms, epsilon=0.3, name="AI_Eps_0.3"),
         EpsilonGreedy(env.nbArms, epsilon=0.5, name="AI_Eps_0.5"),
-        UCBAgent(env.nbArms, c=1.0, name="AI_UCB_c1.0"),
-        UCBAgent(env.nbArms, c=2.0, name="AI_UCB_c2.0"),
-        SoftmaxAgent(env.nbArms, temperature=0.5, name="AI_Softmax_T0.5"),
-        SoftmaxAgent(env.nbArms, temperature=1.0, name="AI_Softmax_T1.0")
+        UCBAgent(env.nbArms, c=0.01, name="AI_UCB_0.01"),
+        UCBAgent(env.nbArms, c=0.05, name="AI_UCB_0.05"),
+        SoftmaxAgent(env.nbArms, temperature=0.05, name="AI_Softmax_0.05"),
+        SoftmaxAgent(env.nbArms, temperature=0.1, name="AI_Softmax_0.1")
     ]
     agent_names = [agent.name for agent in agents]
     logger.info(f"🤖 참여 에이전트 명단: {agent_names}")
