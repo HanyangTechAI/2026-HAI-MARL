@@ -2,7 +2,7 @@ import numpy as np
 
 class BaseAgent:
     """
-    모든 에이전트(AI, 인간, 분탕충)가 공통으로 상속받을 뼈대 클래스입니다.
+    모든 에이전트가 공통으로 상속받을 뼈대 클래스입니다.
     """
     def __init__(self, num_arms, name="BaseAgent"):
         self.num_arms = num_arms
@@ -19,8 +19,8 @@ class BaseAgent:
 
     def choice(self):
         """
-        (필수 구현) 어떤 자산을 선택할지 결정하는 행동 로직.
-        팀원들은 각자의 Agent 클래스에서 이 함수를 덮어씌워야(Override) 합니다!
+        어떤 자산을 선택할지 결정하는 행동 로직.
+        각 Agent 클래스들은 이 함수를 Override해야 합니다!
         """
         raise NotImplementedError("이 메서드는 하위 클래스에서 반드시 구현해야 합니다.")
 
