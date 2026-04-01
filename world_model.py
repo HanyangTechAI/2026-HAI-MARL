@@ -1,34 +1,24 @@
 """
-WorldModelAgent for HAI-MARL (Multi-Armed Bandit Environment)
-=============================================================
-환경 분석 요약:
-  - MAB 환경: 8개 arm (Stationary×2, EventShock×2, Trend×2, Switch×2)
-  - Action space : Discrete(8)  → arm index 선택
-  - Observation  : scalar reward (float) + 내부 통계 누적
-  - Collision    : reward / (n_collisions ^ 1.5)  슬리피지 패널티
-  - Horizon      : 1941 steps (Walmart 데이터 기반)
-  - 기존 인터페이스: agent.choice() → int,  agent.getReward(arm, reward)
+WorldModelAgent — Dream Training 완전 구현
+==========================================
 
-State 벡터 구성 (풍부한 state):
-  [히스토리 파트] 최근 H스텝의 (one-hot action ‖ reward)  → H × (K+1)
-  [통계 파트]     각 arm별 (평균보상, 선택횟수_log, 분산)   → K × 3
-  전체 obs_dim = H*(K+1) + K*3
+논문 (Ha & Schmidhuber, 2018) 4장의 핵심:
+  "C를 실제 환경이 아닌 M이 생성한 가상 환경 안에서 학습"
 
-파라미터:
-  K  = 8   (num_arms)
-  H  = 16  (history window)
-  obs_dim = 16*(8+1) + 8*3 = 144 + 24 = 168
-  z_dim   = 32  (V 인코더 잠재 차원)
-  h_dim   = 64  (M MDN-RNN hidden 차원)
-  n_mix   = 5   (MDN 가우시안 믹스처 수)
-  action_dim = 8
+변경 사항 (기존 코드 대비):
+  1. MDNRNN: 보상 예측 헤드 추가
+     (z_t, a_t, h_t) → z_t+1 분포 + r_t 예측
+  2. _train_M(): 보상 예측 loss 추가 (MSE)
+  3. dream_rollout(): 핵심 추가 함수
+     M 안에서 C가 행동 선택 → M이 (z_next, r) 예측 → dream transition 수집
+  4. _train_C_from_dream(): dream transition으로 C 업데이트
+  5. getReward(): dream training 트리거 추가
 
-사용법:
-  agent = WorldModelAgent(num_arms=8)
-  arm   = agent.choice()         # → int (0~7)
-  agent.getReward(arm, reward)   # 환경으로부터 보상 수신
-
-학습 루프는 파일 하단 train_world_model() 함수 참조.
+보상 예측 방식:
+  받은 reward (collision 패널티 적용 후)를 통째로 타깃으로 사용.
+  → M이 "이 맥락(z, h)에서 arm a를 골랐을 때 경험적으로 이 정도 reward가 나왔다"를
+    분포로 학습. collision 노이즈는 MDN의 넓은 sigma로 자연스럽게 흡수됨.
+  → 논문의 철학과 일치: 보상의 원인을 분해하지 않고 M이 통째로 모델링.
 """
 
 import numpy as np
@@ -38,63 +28,66 @@ import torch.nn.functional as F
 from torch.optim import Adam
 from collections import deque
 
+try:
+    from .base_agent import BaseAgent
+except ImportError:
+    from base_agent import BaseAgent
 
-# ─────────────────────────────────────────────
-# 하이퍼파라미터 (한 곳에서 관리)
-# ─────────────────────────────────────────────
+
+# ─────────────────────────────────────────────────────────
+# 하이퍼파라미터
+# ─────────────────────────────────────────────────────────
 class Config:
     # 환경
-    K          = 8      # num_arms (MAB arm 수)
-    HORIZON    = 1941   # Walmart 시뮬레이션 길이
-    N_AGENTS   = 9      # CustomEvaluator에 투입할 에이전트 수 (참고용)
+    K            = 8
+    HORIZON      = 1941
 
-    # State 구성
-    H          = 16     # 히스토리 윈도우 크기
-    OBS_DIM    = H * (K + 1) + K * 3  # = 168
+    # State
+    H            = 16
+    # obs_dim = H*(K+1) + K*3 → 동적 계산
 
-    # V 모듈 (MLP Encoder)
-    Z_DIM      = 32     # 잠재 벡터 차원
-    V_HIDDEN   = 128    # V 인코더/디코더 히든 크기
+    # V 모듈
+    Z_DIM        = 32
+    V_HIDDEN     = 128
 
-    # M 모듈 (MDN-RNN)
-    H_DIM      = 64     # LSTM hidden 차원
-    N_MIX      = 5      # MDN 가우시안 믹스처 수
-    M_HIDDEN   = 128    # MDN 헤드 히든 크기
-
-    # C 모듈 (Controller)
-    # 입력: z_dim + h_dim = 32 + 64 = 96
-    C_INPUT    = Z_DIM + H_DIM  # = 96
+    # M 모듈
+    H_DIM        = 64
+    N_MIX        = 5
+    M_HIDDEN     = 128
 
     # 학습
-    LR_V       = 3e-4
-    LR_M       = 3e-4
-    LR_C       = 1e-3
-    BATCH_SIZE = 64
-    SEQ_LEN    = 32     # M 학습용 시퀀스 길이
-    GAMMA      = 0.99   # 보상 할인율
-    REPLAY_MIN = 256    # 최소 replay buffer 크기
+    LR_V         = 3e-4
+    LR_M         = 3e-4
+    LR_C         = 1e-3
+    BATCH_SIZE   = 64
+    SEQ_LEN      = 32
+    GAMMA        = 0.99
+    REPLAY_MIN   = 256
+    TARGET_UPDATE = 50
+
+    # Dream Training
+    DREAM_HORIZON      = 16    # 한 번의 dream에서 몇 스텝 시뮬레이션할지
+    DREAM_EVERY        = 10    # 실제 환경 N스텝마다 dream 1회 실행
+    DREAM_BATCH        = 8     # 한 번의 dream에서 몇 개의 시작점을 병렬로 굴릴지
+    TEMPERATURE        = 1.0   # τ: dream 불확실성 조절 (높을수록 노이즈 많음)
+    REWARD_LOSS_WEIGHT = 0.5   # M의 보상 예측 loss 가중치
 
     # 탐험
-    EPSILON_START = 1.0
-    EPSILON_END   = 0.05
-    EPSILON_DECAY = 0.995
-
+    EPS_START    = 1.0
+    EPS_END      = 0.05
+    EPS_DECAY    = 0.995
 
 cfg = Config()
 
 
-# ─────────────────────────────────────────────
-# V 모듈: MLP Encoder / Decoder
-# ─────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────
+# V 모듈 (기존과 동일)
+# ─────────────────────────────────────────────────────────
 class VEncoder(nn.Module):
-    """
-    obs_dim(168) → z_dim(32) 압축 인코더.
-    VAE 스타일: mean과 logvar를 출력해 reparameterization trick 사용.
-    """
-    def __init__(self):
+    def __init__(self, obs_dim):
         super().__init__()
         self.net = nn.Sequential(
-            nn.Linear(cfg.OBS_DIM, cfg.V_HIDDEN),
+            nn.Linear(obs_dim, cfg.V_HIDDEN),
             nn.LayerNorm(cfg.V_HIDDEN),
             nn.ReLU(),
             nn.Linear(cfg.V_HIDDEN, cfg.V_HIDDEN // 2),
@@ -104,55 +97,50 @@ class VEncoder(nn.Module):
         self.fc_logvar = nn.Linear(cfg.V_HIDDEN // 2, cfg.Z_DIM)
 
     def forward(self, obs):
-        """
-        obs : (batch, obs_dim=168)
-        returns z_mean, z_logvar, z (reparameterized)
-        """
         h = self.net(obs)
         z_mean   = self.fc_mean(h)
-        z_logvar = self.fc_logvar(h).clamp(-4, 4)  # 수치 안정성
-        # Reparameterization
+        z_logvar = self.fc_logvar(h).clamp(-4, 4)
         if self.training:
-            eps = torch.randn_like(z_mean)
-            z = z_mean + eps * (0.5 * z_logvar).exp()
+            z = z_mean + (0.5 * z_logvar).exp() * torch.randn_like(z_mean)
         else:
             z = z_mean
         return z_mean, z_logvar, z
 
 
 class VDecoder(nn.Module):
-    """
-    z_dim(32) → obs_dim(168) 복원 디코더.
-    사전학습(reconstruction loss) 및 world model 검증용.
-    """
-    def __init__(self):
+    def __init__(self, obs_dim):
         super().__init__()
         self.net = nn.Sequential(
             nn.Linear(cfg.Z_DIM, cfg.V_HIDDEN // 2),
             nn.ReLU(),
             nn.Linear(cfg.V_HIDDEN // 2, cfg.V_HIDDEN),
             nn.ReLU(),
-            nn.Linear(cfg.V_HIDDEN, cfg.OBS_DIM),
+            nn.Linear(cfg.V_HIDDEN, obs_dim),
         )
 
     def forward(self, z):
         return self.net(z)
 
 
-# ─────────────────────────────────────────────
-# M 모듈: MDN-RNN
-# ─────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────
+# M 모듈: MDN-RNN + 보상 예측 헤드 ← 핵심 변경
+# ─────────────────────────────────────────────────────────
 class MDNRNN(nn.Module):
     """
-    MDN-RNN: 과거 (z, action) 시퀀스로 미래 z 분포 예측.
+    기존 대비 변경:
+      출력이 두 가지로 분리됨
+        1. z_next 분포: (pi, mu, sigma) — MDN (기존)
+        2. r_pred     : scalar           — 보상 예측 헤드 (신규)
 
-    입력: z_t (z_dim=32) + one-hot action (K=8) = 40차원
-    LSTM hidden: h_dim=64
-    출력: N_MIX 개의 (pi, mu, sigma) — 다음 z의 Gaussian 믹스처
+    보상 예측 원리:
+      M이 과거 경험 (z, a) → r 의 패턴을 학습.
+      collision 패널티는 MDN의 넓은 sigma로 자연스럽게 흡수됨.
+      dream rollout에서 r_pred를 실제 reward 대신 사용.
     """
-    def __init__(self):
+    def __init__(self, K):
         super().__init__()
-        self.input_dim = cfg.Z_DIM + cfg.K  # 32 + 8 = 40
+        self.K = K
+        self.input_dim = cfg.Z_DIM + K  # 32 + 8 = 40
 
         self.lstm = nn.LSTM(
             input_size  = self.input_dim,
@@ -161,192 +149,211 @@ class MDNRNN(nn.Module):
             batch_first = True,
         )
 
-        # MDN 헤드: hidden → (pi, mu, sigma) × n_mix × z_dim
-        mdn_out = cfg.N_MIX * (1 + cfg.Z_DIM + cfg.Z_DIM)  # pi + mu + sigma
+        # z_next 예측: MDN 헤드 (기존과 동일)
+        mdn_out = cfg.N_MIX * (1 + cfg.Z_DIM + cfg.Z_DIM)
         self.mdn_head = nn.Sequential(
             nn.Linear(cfg.H_DIM, cfg.M_HIDDEN),
             nn.ReLU(),
             nn.Linear(cfg.M_HIDDEN, mdn_out),
         )
 
+        # 보상 예측 헤드 (신규 추가)
+        # h_t → scalar reward 예측
+        # "이 맥락(h)에서 이 action을 했을 때 reward가 얼마였나"를 학습
+        self.reward_head = nn.Sequential(
+            nn.Linear(cfg.H_DIM, 32),
+            nn.ReLU(),
+            nn.Linear(32, 1),
+        )
+
     def forward(self, z_seq, action_seq, hidden=None):
         """
-        z_seq      : (batch, seq_len, z_dim=32)
-        action_seq : (batch, seq_len) — arm indices (0~7)
-        hidden     : LSTM hidden state (None이면 0으로 초기화)
-
+        z_seq      : (B, T, z_dim)
+        action_seq : (B, T)
         returns:
-          pi    : (batch, seq_len, n_mix)        — 믹스처 가중치
-          mu    : (batch, seq_len, n_mix, z_dim) — 각 가우시안 평균
-          sigma : (batch, seq_len, n_mix, z_dim) — 각 가우시안 표준편차
-          hidden: 업데이트된 LSTM hidden state
+          pi, mu, sigma : z_next MDN 파라미터
+          r_pred        : (B, T, 1) 보상 예측 ← 신규
+          hidden        : 업데이트된 LSTM hidden
         """
         B, T, _ = z_seq.shape
+        a_onehot = F.one_hot(action_seq.long(), self.K).float()
+        lstm_in  = torch.cat([z_seq, a_onehot], dim=-1)
 
-        # action one-hot 인코딩
-        a_onehot = F.one_hot(action_seq.long(), cfg.K).float()  # (B, T, K)
+        lstm_out, hidden = self.lstm(lstm_in, hidden)
 
-        # LSTM 입력 조합
-        lstm_in = torch.cat([z_seq, a_onehot], dim=-1)  # (B, T, 40)
+        # z_next MDN
+        n, z = cfg.N_MIX, cfg.Z_DIM
+        raw   = self.mdn_head(lstm_out)
+        pi    = F.softmax(raw[..., :n], dim=-1)
+        mu    = raw[..., n: n+n*z].view(B, T, n, z)
+        sigma = F.softplus(raw[..., n+n*z:]).view(B, T, n, z) + 1e-6
 
-        lstm_out, hidden = self.lstm(lstm_in, hidden)    # (B, T, h_dim)
+        # 보상 예측
+        r_pred = self.reward_head(lstm_out)   # (B, T, 1)
 
-        # MDN 파라미터 추출
-        mdn_params = self.mdn_head(lstm_out)             # (B, T, n_mix*(1+z+z))
+        return pi, mu, sigma, r_pred, hidden
 
-        # 분리
-        n = cfg.N_MIX
-        z = cfg.Z_DIM
-        pi_raw = mdn_params[..., :n]                     # (B, T, n_mix)
-        mu     = mdn_params[..., n : n + n*z].view(B, T, n, z)
-        sigma  = mdn_params[..., n + n*z :].view(B, T, n, z)
-
-        pi    = F.softmax(pi_raw, dim=-1)
-        sigma = F.softplus(sigma) + 1e-6  # 양수 보장
-
-        return pi, mu, sigma, hidden
-
-    def get_hidden_single(self, z, action, hidden=None):
-        """
-        단일 스텝 추론용 (choice() 시 사용).
-        z      : (z_dim,)  — 1D 텐서
-        action : int
-        returns h_vec (h_dim,), hidden
-        """
-        z_in = z.unsqueeze(0).unsqueeze(0)           # (1, 1, z_dim)
-        a_in = torch.tensor([[action]])               # (1, 1)
-        _, _, _, hidden = self.forward(z_in, a_in, hidden)
-        # hidden[0] : (1, 1, h_dim) → (h_dim,)
+    def step(self, z, action, hidden=None):
+        """단일 스텝 추론 — h_vec 반환 (실제 환경 학습용)"""
+        z_in = z.unsqueeze(0).unsqueeze(0)
+        a_in = torch.tensor([[action]])
+        _, _, _, _, hidden = self.forward(z_in, a_in, hidden)
         h_vec = hidden[0].squeeze(0).squeeze(0)
         return h_vec, hidden
 
+    def dream_step(self, z, action, hidden=None, temperature=1.0):
+        """
+        Dream rollout용 단일 스텝.
+        M이 실제 환경 없이 (z_next, r_pred)를 생성.
 
-# ─────────────────────────────────────────────
-# C 모듈: Controller
-# ─────────────────────────────────────────────
-class Controller(nn.Module):
-    """
-    [z_t ‖ h_t] → action logits (K=8개 arm 확률).
-    입력 차원: z_dim + h_dim = 32 + 64 = 96
-    """
-    def __init__(self):
+        temperature τ (논문 4.2절):
+          sigma를 τ배 확대 → dream이 더 불확실해짐
+          → C가 M의 허점을 찾는 adversarial policy 방지
+          → 실제 환경 전이 성능 향상
+
+        returns:
+          z_next : (z_dim,)  M이 예측한 다음 잠재 상태
+          r_pred : float     M이 예측한 보상 (과거 경험 기반)
+          hidden : 업데이트된 LSTM hidden
+        """
+        z_in = z.unsqueeze(0).unsqueeze(0)
+        a_in = torch.tensor([[action]])
+
+        pi, mu, sigma, r_pred, hidden = self.forward(z_in, a_in, hidden)
+
+        # temperature로 불확실성 조절
+        sigma_t = sigma * temperature
+
+        # 믹스처 중 하나를 확률적으로 선택
+        pi_np   = pi.squeeze(0).squeeze(0).detach().cpu().numpy()
+        mix_idx = np.random.choice(cfg.N_MIX, p=pi_np)
+
+        # 선택된 가우시안에서 z_next 샘플링
+        mu_k    = mu[0, 0, mix_idx]
+        sigma_k = sigma_t[0, 0, mix_idx]
+        z_next  = mu_k + sigma_k * torch.randn_like(mu_k)
+
+        r_val = r_pred[0, 0, 0].item()
+
+        return z_next.detach(), r_val, hidden
+
+
+# ─────────────────────────────────────────────────────────
+# C 모듈: Dueling Q-Network (기존과 동일)
+# ─────────────────────────────────────────────────────────
+class QNetwork(nn.Module):
+    def __init__(self, K):
         super().__init__()
-        self.net = nn.Sequential(
-            nn.Linear(cfg.C_INPUT, 64),   # 96 → 64
-            nn.ReLU(),
-            nn.Linear(64, cfg.K),          # 64 → 8
+        in_dim = cfg.Z_DIM + cfg.H_DIM  # 96
+        self.shared = nn.Sequential(
+            nn.Linear(in_dim, 128), nn.ReLU(),
+            nn.Linear(128, 64),     nn.ReLU(),
         )
+        self.value_stream     = nn.Linear(64, 1)
+        self.advantage_stream = nn.Linear(64, K)
 
     def forward(self, z, h):
-        """
-        z : (batch, z_dim=32)  또는 (z_dim,)
-        h : (batch, h_dim=64)  또는 (h_dim,)
-        returns logits : (batch, K=8)
-        """
         if z.dim() == 1:
             z = z.unsqueeze(0)
             h = h.unsqueeze(0)
-        x = torch.cat([z, h], dim=-1)
-        return self.net(x)
+        feat = self.shared(torch.cat([z, h], dim=-1))
+        V = self.value_stream(feat)
+        A = self.advantage_stream(feat)
+        return V + A - A.mean(dim=-1, keepdim=True)
 
 
-# ─────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────
 # Replay Buffer
-# ─────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────
 class ReplayBuffer:
-    """
-    (obs, action, reward, next_obs) 저장.
-    M 학습을 위해 시퀀스(deque 순서) 유지.
-    """
-    def __init__(self, maxlen=10000):
-        self.buffer = deque(maxlen=maxlen)
+    def __init__(self, maxlen=20000):
+        self.buf = deque(maxlen=maxlen)
 
     def push(self, obs, action, reward, next_obs):
-        self.buffer.append((obs, action, reward, next_obs))
+        self.buf.append((obs, action, float(reward), next_obs))
 
     def sample(self, batch_size):
-        idxs = np.random.choice(len(self.buffer), batch_size, replace=False)
-        batch = [self.buffer[i] for i in idxs]
-        obs, actions, rewards, next_obs = zip(*batch)
+        idxs = np.random.choice(len(self.buf), batch_size, replace=False)
+        obs, act, rew, nobs = zip(*[self.buf[i] for i in idxs])
         return (
             torch.FloatTensor(np.array(obs)),
-            torch.LongTensor(np.array(actions)),
-            torch.FloatTensor(np.array(rewards)),
-            torch.FloatTensor(np.array(next_obs)),
+            torch.LongTensor(np.array(act)),
+            torch.FloatTensor(np.array(rew)),
+            torch.FloatTensor(np.array(nobs)),
         )
 
     def sample_sequences(self, batch_size, seq_len):
-        """M 학습용: (obs, action) 시퀀스 샘플링"""
-        max_start = len(self.buffer) - seq_len
+        max_start = len(self.buf) - seq_len
         if max_start <= 0:
             return None
         starts = np.random.choice(max_start, batch_size, replace=True)
-        obs_seqs, action_seqs, reward_seqs = [], [], []
+        obs_s, act_s, rew_s = [], [], []
         for s in starts:
-            seq = [self.buffer[s + i] for i in range(seq_len)]
-            obs_seqs.append([t[0] for t in seq])
-            action_seqs.append([t[1] for t in seq])
-            reward_seqs.append([t[2] for t in seq])
+            seq = [self.buf[s + i] for i in range(seq_len)]
+            obs_s.append([x[0] for x in seq])
+            act_s.append([x[1] for x in seq])
+            rew_s.append([x[2] for x in seq])
         return (
-            torch.FloatTensor(np.array(obs_seqs)),    # (B, T, obs_dim)
-            torch.LongTensor(np.array(action_seqs)),  # (B, T)
-            torch.FloatTensor(np.array(reward_seqs)), # (B, T)
+            torch.FloatTensor(np.array(obs_s)),
+            torch.LongTensor(np.array(act_s)),
+            torch.FloatTensor(np.array(rew_s)),
         )
 
+    def sample_z_starts(self, n, encoder, device):
+        """Dream rollout 시작점: replay obs → z 인코딩"""
+        idxs = np.random.choice(len(self.buf), n, replace=True)
+        obs  = torch.FloatTensor(
+            np.array([self.buf[i][0] for i in idxs])
+        ).to(device)
+        with torch.no_grad():
+            _, _, z = encoder(obs)
+        return z  # (n, z_dim)
+
     def __len__(self):
-        return len(self.buffer)
+        return len(self.buf)
 
 
-# ─────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────
 # MDN Loss
-# ─────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────
 def mdn_loss(pi, mu, sigma, target):
+    target = target.unsqueeze(2)
+    log_p  = (-0.5 * ((target - mu) / sigma) ** 2
+              - sigma.log()
+              - 0.5 * np.log(2 * np.pi)).sum(-1) + pi.log()
+    return -torch.logsumexp(log_p, dim=-1).mean()
+
+
+# ─────────────────────────────────────────────────────────
+# WorldModelAgent
+# ─────────────────────────────────────────────────────────
+class WorldModelAgent(BaseAgent):
     """
-    Negative log-likelihood of Gaussian mixture.
-    pi     : (B, T, n_mix)
-    mu     : (B, T, n_mix, z_dim)
-    sigma  : (B, T, n_mix, z_dim)
-    target : (B, T, z_dim)
+    Ha & Schmidhuber (2018) World Model — Dream Training 완전 구현
 
-    returns scalar loss
-    """
-    target_expanded = target.unsqueeze(2)  # (B, T, 1, z_dim)
-    # log N(target | mu, sigma) per component per dim
-    log_prob = -0.5 * ((target_expanded - mu) / sigma) ** 2 \
-               - sigma.log() - 0.5 * np.log(2 * np.pi)
-    # sum over z_dim, add log pi
-    log_prob = log_prob.sum(-1) + pi.log()          # (B, T, n_mix)
-    # log-sum-exp over mixtures
-    nll = -torch.logsumexp(log_prob, dim=-1)         # (B, T)
-    return nll.mean()
-
-
-# ─────────────────────────────────────────────
-# WorldModelAgent (기존 인터페이스 호환)
-# ─────────────────────────────────────────────
-class WorldModelAgent:
-    """
-    Ha & Schmidhuber (2018) World Model을 MAB 환경에 적용한 에이전트.
-
-    기존 CustomEvaluator 인터페이스 완전 호환:
-      arm  = agent.choice()           # arm 선택 (0 ~ K-1)
-      agent.getReward(arm, reward)    # 보상 수신 및 내부 업데이트
+    학습 흐름:
+      [실제 환경]  매 스텝: V, M, C 실제 transition으로 학습
+      [Dream]     N스텝마다: M 안에서 C를 꿈으로 추가 학습
+                            → 논문의 핵심 기여
     """
 
-    def __init__(self, num_arms=cfg.K, name="WorldModelAgent", device="cpu"):
-        self.name      = name
-        self.K         = num_arms
-        self.device    = torch.device(device)
-        self.t         = 0          # 현재 스텝
-        self.epsilon   = cfg.EPSILON_START
+    def __init__(self, num_arms, name="WorldModelAgent", device="cpu"):
+        super().__init__(num_arms=num_arms, name=name)
 
-        # ── 모듈 초기화 ──────────────────────────
-        self.V_enc = VEncoder().to(self.device)
-        self.V_dec = VDecoder().to(self.device)
-        self.M     = MDNRNN().to(self.device)
-        self.C     = Controller().to(self.device)
+        self.K       = num_arms
+        self.device  = torch.device(device)
+        self.obs_dim = cfg.H * (self.K + 1) + self.K * 3
 
-        # ── 옵티마이저 ───────────────────────────
+        # 모듈
+        self.V_enc    = VEncoder(self.obs_dim).to(self.device)
+        self.V_dec    = VDecoder(self.obs_dim).to(self.device)
+        self.M        = MDNRNN(self.K).to(self.device)
+        self.C        = QNetwork(self.K).to(self.device)
+        self.C_target = QNetwork(self.K).to(self.device)
+        self.C_target.load_state_dict(self.C.state_dict())
+        self.C_target.eval()
+
+        # 옵티마이저
         self.opt_V = Adam(
             list(self.V_enc.parameters()) + list(self.V_dec.parameters()),
             lr=cfg.LR_V
@@ -354,170 +361,146 @@ class WorldModelAgent:
         self.opt_M = Adam(self.M.parameters(), lr=cfg.LR_M)
         self.opt_C = Adam(self.C.parameters(), lr=cfg.LR_C)
 
-        # ── 내부 상태 ────────────────────────────
-        # 히스토리 윈도우: deque of (arm_idx, reward)
-        self._history  = deque(maxlen=cfg.H)
-        # 채우기: (arm=0, reward=0) × H
-        for _ in range(cfg.H):
-            self._history.append((0, 0.0))
-
-        # arm별 누적 통계
-        self._counts   = np.zeros(self.K)           # 선택 횟수
-        self._sum_r    = np.zeros(self.K)           # 보상 합
-        self._sum_r2   = np.zeros(self.K)           # 보상 제곱합 (분산용)
-
-        # LSTM hidden state
+        # 내부 상태
+        self._history     = deque([(0, 0.0)] * cfg.H, maxlen=cfg.H)
+        self._sum_r2      = np.zeros(self.K)
         self._lstm_hidden = None
         self._last_z      = torch.zeros(cfg.Z_DIM).to(self.device)
         self._last_h      = torch.zeros(cfg.H_DIM).to(self.device)
+        self._last_obs    = None
         self._last_action = 0
+        self.epsilon      = cfg.EPS_START
 
-        # Replay buffer
         self.replay = ReplayBuffer(maxlen=20000)
-        self._last_obs = None
 
-        # 학습 손실 기록
-        self.loss_v_log = []
-        self.loss_m_log = []
-        self.loss_c_log = []
+        # 손실 기록
+        self.loss_v_log     = []
+        self.loss_m_log     = []
+        self.loss_c_log     = []
+        self.loss_dream_log = []   # dream training loss
 
-    # ─── State 벡터 빌드 ───────────────────────
+    # ─── State 벡터 ───────────────────────────────────────
     def _build_obs(self):
-        """
-        현재 내부 통계로 obs 벡터(168차원) 구성.
+        hist = []
+        for arm, r in self._history:
+            oh = np.zeros(self.K, dtype=np.float32)
+            oh[arm] = 1.0
+            hist.append(np.append(oh, float(r)))
+        hist_vec = np.concatenate(hist)
 
-        [히스토리 파트] H × (K+1):
-          각 스텝: one-hot(action, K) + scalar_reward  → K+1 차원
-        [통계 파트] K × 3:
-          arm별 (평균보상, log(1+count), 분산)
-        """
-        # 히스토리
-        hist_parts = []
-        for (arm, r) in self._history:
-            onehot = np.zeros(self.K, dtype=np.float32)
-            onehot[arm] = 1.0
-            hist_parts.append(np.append(onehot, r))
-        hist_vec = np.concatenate(hist_parts)  # H*(K+1)
-
-        # 통계
-        avg_r  = np.where(self._counts > 0, self._sum_r / self._counts, 0.0)
-        log_n  = np.log1p(self._counts)
+        avg_r  = self.q_values.astype(np.float32)
+        log_n  = np.log1p(self.pulls).astype(np.float32)
         var_r  = np.where(
-            self._counts > 1,
-            self._sum_r2 / self._counts - avg_r**2,
+            self.pulls > 1,
+            self._sum_r2 / np.maximum(self.pulls, 1) - avg_r ** 2,
             0.0
-        )
-        stat_vec = np.stack([avg_r, log_n, var_r], axis=1).flatten()  # K*3
+        ).astype(np.float32)
+        stat_vec = np.stack([avg_r, log_n, var_r], axis=1).flatten()
 
-        return np.concatenate([hist_vec, stat_vec]).astype(np.float32)
+        return np.concatenate([hist_vec, stat_vec])
 
-    # ─── 기존 인터페이스: choice() ─────────────
+    # ─── choice() ─────────────────────────────────────────
     def choice(self):
-        """
-        현재 관측을 인코딩하고 Controller로 arm 선택.
-        ε-greedy 탐험 적용.
-        """
         self.V_enc.eval()
         self.C.eval()
 
         obs = self._build_obs()
         self._last_obs = obs.copy()
 
-        obs_t = torch.FloatTensor(obs).to(self.device)
+        obs_t = torch.FloatTensor(obs).unsqueeze(0).to(self.device)
         with torch.no_grad():
-            _, _, z = self.V_enc(obs_t.unsqueeze(0))
-            z = z.squeeze(0)
-            logits = self.C(z, self._last_h)
-            probs  = F.softmax(logits, dim=-1).squeeze(0)
+            _, _, z = self.V_enc(obs_t)
+            z       = z.squeeze(0)
+            q_vals  = self.C(z, self._last_h).squeeze(0)
 
-        # ε-greedy
         if np.random.random() < self.epsilon:
-            arm = np.random.randint(self.K)
+            arm = int(np.random.randint(self.K))
         else:
-            arm = probs.argmax().item()
+            arm = int(q_vals.argmax().item())
 
-        self._last_z      = z
+        self._last_z      = z.detach()
         self._last_action = arm
         return arm
 
-    # ─── 기존 인터페이스: getReward() ──────────
+    # ─── getReward() — dream 트리거 추가 ──────────────────
     def getReward(self, arm, reward):
-        """
-        보상 수신 → 내부 통계 업데이트 → 모듈 학습.
-        """
-        # 통계 업데이트
-        self._counts[arm]  += 1
-        self._sum_r[arm]   += reward
-        self._sum_r2[arm]  += reward ** 2
+        # 1. BaseAgent 공통
+        super().getReward(arm, reward)
+
+        # 2. 분산 통계
+        self._sum_r2[arm] += reward ** 2
+
+        # 3. 히스토리
         self._history.append((arm, float(reward)))
 
-        # M 모듈: LSTM hidden 업데이트
+        # 4. M hidden 갱신
         self.M.eval()
         with torch.no_grad():
-            self._last_h, self._lstm_hidden = self.M.get_hidden_single(
+            self._last_h, self._lstm_hidden = self.M.step(
                 self._last_z, arm, self._lstm_hidden
             )
 
-        # 다음 obs 빌드 후 replay 저장
+        # 5. Replay 저장
         next_obs = self._build_obs()
         if self._last_obs is not None:
-            self.replay.push(
-                self._last_obs,
-                arm,
-                float(reward),
-                next_obs
-            )
+            self.replay.push(self._last_obs, arm, reward, next_obs)
 
-        # ε decay
-        self.epsilon = max(
-            cfg.EPSILON_END,
-            self.epsilon * cfg.EPSILON_DECAY
-        )
+        # 6. ε decay
+        self.epsilon = max(cfg.EPS_END, self.epsilon * cfg.EPS_DECAY)
 
-        # 학습 트리거 (충분한 데이터 쌓인 이후)
+        # 7. 실제 환경 학습
         if len(self.replay) >= cfg.REPLAY_MIN:
             self._train_step()
 
-        self.t += 1
+        # 8. Dream Training ← 핵심 추가
+        if (len(self.replay) >= cfg.REPLAY_MIN
+                and self.t % cfg.DREAM_EVERY == 0):
+            self._dream_and_train()
 
-    # ─── 학습 스텝 ─────────────────────────────
+        # 9. Target network 업데이트
+        if self.t % cfg.TARGET_UPDATE == 0:
+            self.C_target.load_state_dict(self.C.state_dict())
+
+    # ─── 실제 환경 학습 ───────────────────────────────────
     def _train_step(self):
-        """V, M, C 모듈을 각각 1 gradient step 업데이트."""
         self._train_V()
         self._train_M()
         self._train_C()
 
     def _train_V(self):
-        """VAE reconstruction loss + KL divergence."""
         self.V_enc.train()
         self.V_dec.train()
         self.opt_V.zero_grad()
 
-        obs, _, _, next_obs = self.replay.sample(cfg.BATCH_SIZE)
+        obs, _, _, _ = self.replay.sample(cfg.BATCH_SIZE)
         obs = obs.to(self.device)
 
         z_mean, z_logvar, z = self.V_enc(obs)
-        obs_recon = self.V_dec(z)
+        recon = self.V_dec(z)
 
-        recon_loss = F.mse_loss(obs_recon, obs)
+        recon_loss = F.mse_loss(recon, obs)
         kl_loss    = -0.5 * (1 + z_logvar - z_mean**2 - z_logvar.exp()).mean()
         loss       = recon_loss + 0.001 * kl_loss
 
         loss.backward()
-        torch.nn.utils.clip_grad_norm_(
+        nn.utils.clip_grad_norm_(
             list(self.V_enc.parameters()) + list(self.V_dec.parameters()), 1.0
         )
         self.opt_V.step()
         self.loss_v_log.append(loss.item())
 
     def _train_M(self):
-        """MDN-RNN: 다음 z 예측의 NLL 최소화."""
+        """
+        기존 대비 변경:
+          z_next 예측 loss + 보상 예측 loss 동시에 최적화
+        """
         result = self.replay.sample_sequences(cfg.BATCH_SIZE, cfg.SEQ_LEN)
         if result is None:
             return
-        obs_seq, action_seq, _ = result
+        obs_seq, action_seq, reward_seq = result
         obs_seq    = obs_seq.to(self.device)
         action_seq = action_seq.to(self.device)
+        reward_seq = reward_seq.to(self.device)
 
         self.V_enc.eval()
         self.M.train()
@@ -525,28 +508,28 @@ class WorldModelAgent:
 
         with torch.no_grad():
             B, T, D = obs_seq.shape
-            obs_flat = obs_seq.view(B * T, D)
-            _, _, z_flat = self.V_enc(obs_flat)
+            _, _, z_flat = self.V_enc(obs_seq.view(B * T, D))
             z_seq = z_flat.view(B, T, cfg.Z_DIM)
 
-        # 입력: t=0..T-2, 타깃: t=1..T-1
-        z_in     = z_seq[:, :-1, :]       # (B, T-1, z_dim)
-        z_target = z_seq[:, 1:, :]        # (B, T-1, z_dim)
-        a_in     = action_seq[:, :-1]     # (B, T-1)
+        # z_next 예측 (기존)
+        pi, mu, sigma, r_pred, _ = self.M(z_seq[:, :-1], action_seq[:, :-1])
+        z_loss = mdn_loss(pi, mu, sigma, z_seq[:, 1:].detach())
 
-        pi, mu, sigma, _ = self.M(z_in, a_in)
-        loss = mdn_loss(pi, mu, sigma, z_target)
+        # 보상 예측 (신규)
+        # r_pred : (B, T-1, 1)
+        # 타깃   : 같은 시점의 실제 reward
+        r_target = reward_seq[:, :-1].unsqueeze(-1)
+        r_loss   = F.mse_loss(r_pred, r_target)
+
+        loss = z_loss + cfg.REWARD_LOSS_WEIGHT * r_loss
 
         loss.backward()
-        torch.nn.utils.clip_grad_norm_(self.M.parameters(), 1.0)
+        nn.utils.clip_grad_norm_(self.M.parameters(), 1.0)
         self.opt_M.step()
         self.loss_m_log.append(loss.item())
 
     def _train_C(self):
-        """
-        Controller: DQN 스타일 Q-learning.
-        Q(s,a) = r + γ * max Q(s',a')
-        """
+        """실제 환경 transition으로 C 학습 (Double DQN)"""
         self.V_enc.eval()
         self.C.train()
         self.opt_C.zero_grad()
@@ -560,34 +543,137 @@ class WorldModelAgent:
         with torch.no_grad():
             _, _, z      = self.V_enc(obs)
             _, _, z_next = self.V_enc(next_obs)
-            # h는 현재 간단히 0벡터 사용 (완전 학습 시 M과 결합)
-            h      = torch.zeros(obs.size(0), cfg.H_DIM).to(self.device)
-            h_next = torch.zeros(obs.size(0), cfg.H_DIM).to(self.device)
+            h      = torch.zeros(obs.size(0), cfg.H_DIM, device=self.device)
+            h_next = torch.zeros(obs.size(0), cfg.H_DIM, device=self.device)
 
-        # 현재 Q값
-        q_all    = self.C(z, h)                            # (B, K)
-        q_taken  = q_all.gather(1, actions.unsqueeze(1)).squeeze(1)
+        q_all   = self.C(z, h)
+        q_taken = q_all.gather(1, actions.unsqueeze(1)).squeeze(1)
 
-        # 타깃 Q값
         with torch.no_grad():
-            q_next = self.C(z_next, h_next).max(dim=1).values
+            best_a   = self.C(z_next, h_next).argmax(dim=1, keepdim=True)
+            q_next   = self.C_target(z_next, h_next).gather(1, best_a).squeeze(1)
             q_target = rewards + cfg.GAMMA * q_next
 
         loss = F.smooth_l1_loss(q_taken, q_target)
         loss.backward()
-        torch.nn.utils.clip_grad_norm_(self.C.parameters(), 1.0)
+        nn.utils.clip_grad_norm_(self.C.parameters(), 1.0)
         self.opt_C.step()
         self.loss_c_log.append(loss.item())
 
-    # ─── 모델 저장/불러오기 ─────────────────────
+    # ─── Dream Training ← 핵심 추가 ──────────────────────
+    def _dream_and_train(self):
+        """
+        논문 4장 구현:
+        M이 생성한 가상 환경 안에서 C를 학습.
+
+        흐름:
+          1. replay에서 실제 경험의 z를 시작점으로 샘플링
+          2. C가 꿈 안에서 행동 선택 (ε-greedy)
+          3. M.dream_step()으로 (z_next, r_pred) 예측
+             → 실제 환경에 전혀 접근하지 않음
+          4. dream transition 수집
+          5. _train_C_from_dream()으로 C 업데이트
+
+        temperature τ (논문 4.2절):
+          σ를 τ배 확대 → dream이 더 노이즈 많아짐
+          → C가 M의 허점 exploit하기 어려워짐
+          → 실제 환경으로 policy 전이 성능 향상
+        """
+        self.V_enc.eval()
+        self.M.eval()
+        self.C.eval()
+
+        # 1. replay에서 시작 z 샘플링
+        z_starts = self.replay.sample_z_starts(
+            cfg.DREAM_BATCH, self.V_enc, self.device
+        )  # (DREAM_BATCH, z_dim)
+
+        dream_transitions = []
+
+        for b in range(cfg.DREAM_BATCH):
+            z      = z_starts[b]
+            h      = torch.zeros(cfg.H_DIM).to(self.device)
+            hidden = None
+
+            for _ in range(cfg.DREAM_HORIZON):
+                # 2. C가 꿈 안에서 행동 선택
+                with torch.no_grad():
+                    q_vals = self.C(z, h).squeeze(0)
+                if np.random.random() < self.epsilon:
+                    action = int(np.random.randint(self.K))
+                else:
+                    action = int(q_vals.argmax().item())
+
+                # 3. M이 다음 상태와 보상 예측
+                #    과거 경험 기반으로 "이 맥락에서 arm k를 골랐을 때
+                #    어느 수준의 reward가 나왔는지"를 r_pred로 반환
+                with torch.no_grad():
+                    z_next, r_pred, hidden = self.M.dream_step(
+                        z, action, hidden,
+                        temperature=cfg.TEMPERATURE
+                    )
+                    h = hidden[0].squeeze(0).squeeze(0)
+
+                dream_transitions.append((
+                    z.detach(),
+                    action,
+                    r_pred,      # M이 예측한 보상 (실제 reward 대신)
+                    z_next.detach(),
+                    h.detach(),
+                ))
+
+                z = z_next
+
+        # 4. Dream transition으로 C 업데이트
+        self._train_C_from_dream(dream_transitions)
+
+    def _train_C_from_dream(self, transitions):
+        """
+        Dream transition으로 C 업데이트.
+
+        실제 환경 학습과의 차이:
+          obs 대신 z 직접 사용 (V 인코딩 불필요)
+          reward는 M이 예측한 r_pred 사용
+          z_next도 M이 생성한 가상 상태
+          → 실제 환경에 전혀 접근하지 않음 ← 진짜 World Model
+        """
+        if len(transitions) < 4:
+            return
+
+        self.C.train()
+        self.opt_C.zero_grad()
+
+        z_list      = torch.stack([t[0] for t in transitions]).to(self.device)
+        actions     = torch.LongTensor([t[1] for t in transitions]).to(self.device)
+        rewards     = torch.FloatTensor([t[2] for t in transitions]).to(self.device)
+        z_next_list = torch.stack([t[3] for t in transitions]).to(self.device)
+        h_list      = torch.stack([t[4] for t in transitions]).to(self.device)
+        h_next      = torch.zeros_like(h_list)
+
+        q_all   = self.C(z_list, h_list)
+        q_taken = q_all.gather(1, actions.unsqueeze(1)).squeeze(1)
+
+        with torch.no_grad():
+            best_a   = self.C(z_next_list, h_next).argmax(dim=1, keepdim=True)
+            q_next   = self.C_target(z_next_list, h_next).gather(1, best_a).squeeze(1)
+            q_target = rewards + cfg.GAMMA * q_next
+
+        loss = F.smooth_l1_loss(q_taken, q_target)
+        loss.backward()
+        nn.utils.clip_grad_norm_(self.C.parameters(), 1.0)
+        self.opt_C.step()
+        self.loss_dream_log.append(loss.item())
+
+    # ─── 저장 / 불러오기 ──────────────────────────────────
     def save(self, path="world_model_agent.pt"):
         torch.save({
-            "V_enc": self.V_enc.state_dict(),
-            "V_dec": self.V_dec.state_dict(),
-            "M":     self.M.state_dict(),
-            "C":     self.C.state_dict(),
+            "V_enc":    self.V_enc.state_dict(),
+            "V_dec":    self.V_dec.state_dict(),
+            "M":        self.M.state_dict(),
+            "C":        self.C.state_dict(),
+            "C_target": self.C_target.state_dict(),
         }, path)
-        print(f"[WorldModelAgent] 모델 저장 완료 → {path}")
+        print(f"[{self.name}] 저장 완료 → {path}")
 
     def load(self, path="world_model_agent.pt"):
         ckpt = torch.load(path, map_location=self.device)
@@ -595,100 +681,70 @@ class WorldModelAgent:
         self.V_dec.load_state_dict(ckpt["V_dec"])
         self.M.load_state_dict(ckpt["M"])
         self.C.load_state_dict(ckpt["C"])
-        print(f"[WorldModelAgent] 모델 로드 완료 ← {path}")
+        self.C_target.load_state_dict(ckpt["C_target"])
+        print(f"[{self.name}] 로드 완료 ← {path}")
 
 
-# ─────────────────────────────────────────────
-# main_time.py에서 사용하는 방법 (드롭인 교체)
-# ─────────────────────────────────────────────
-def create_world_model_agents(num_arms=cfg.K, n_agents=1, device="cpu"):
-    """
-    main_time.py의 agents 리스트에 WorldModelAgent 추가 예시:
-
-        from agents.world_model_agent import create_world_model_agents
-        wm_agents = create_world_model_agents(num_arms=env.nbArms, n_agents=2)
-        agents = [...기존 에이전트..., *wm_agents]
-    """
-    return [
-        WorldModelAgent(
-            num_arms=num_arms,
-            name=f"WorldModel_{i}",
-            device=device
-        )
-        for i in range(n_agents)
-    ]
-
-
-# ─────────────────────────────────────────────
-# 독립 학습 루프 (사전학습용)
-# ─────────────────────────────────────────────
-def pretrain_V(agent, n_steps=500):
-    """
-    랜덤 정책으로 rollout을 수집하며 V 모듈만 사전학습.
-    실제 환경 없이 랜덤 obs로 reconstruction 검증.
-    """
-    print("[Pretrain V] 랜덤 obs로 V 인코더 워밍업 중...")
-    agent.V_enc.train()
-    agent.V_dec.train()
-    for step in range(n_steps):
-        # 랜덤 obs 생성 (실제 환경 rollout으로 교체 가능)
-        fake_obs = torch.FloatTensor(
-            np.random.randn(cfg.BATCH_SIZE, cfg.OBS_DIM).astype(np.float32)
-        ).to(agent.device)
-
-        agent.opt_V.zero_grad()
-        z_mean, z_logvar, z = agent.V_enc(fake_obs)
-        recon = agent.V_dec(z)
-        loss  = F.mse_loss(recon, fake_obs)
-        loss.backward()
-        agent.opt_V.step()
-
-        if (step + 1) % 100 == 0:
-            print(f"  Step {step+1}/{n_steps} | V loss: {loss.item():.6f}")
-    print("[Pretrain V] 완료!\n")
-
-
-# ─────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────
 # 파라미터 정보 출력
-# ─────────────────────────────────────────────
-def print_model_info():
-    agent = WorldModelAgent()
+# ─────────────────────────────────────────────────────────
+def print_model_info(K=8):
+    obs_dim = cfg.H * (K + 1) + K * 3
+    agent   = WorldModelAgent(num_arms=K)
     modules = {
-        "V Encoder": agent.V_enc,
-        "V Decoder": agent.V_dec,
-        "M MDN-RNN": agent.M,
-        "C Controller": agent.C,
+        "V Encoder":   agent.V_enc,
+        "V Decoder":   agent.V_dec,
+        "M MDN-RNN":   agent.M,
+        "C Q-Network": agent.C,
     }
-    print("=" * 55)
-    print("  WorldModelAgent 파라미터 요약")
-    print("=" * 55)
-    print(f"  obs_dim  = H×(K+1) + K×3 = {cfg.H}×{cfg.K+1} + {cfg.K}×3 = {cfg.OBS_DIM}")
-    print(f"  z_dim    = {cfg.Z_DIM}")
-    print(f"  h_dim    = {cfg.H_DIM}")
-    print(f"  n_mix    = {cfg.N_MIX}")
-    print(f"  C_input  = z_dim + h_dim = {cfg.C_INPUT}")
-    print("-" * 55)
+    print("=" * 60)
+    print("  WorldModelAgent — Dream Training 버전")
+    print("=" * 60)
+    print(f"  obs_dim        = {cfg.H}×({K}+1) + {K}×3 = {obs_dim}")
+    print(f"  z_dim          = {cfg.Z_DIM}")
+    print(f"  h_dim          = {cfg.H_DIM}")
+    print(f"  dream_horizon  = {cfg.DREAM_HORIZON} steps")
+    print(f"  dream_every    = {cfg.DREAM_EVERY} steps")
+    print(f"  temperature τ  = {cfg.TEMPERATURE}")
+    print("-" * 60)
     total = 0
-    for name, module in modules.items():
-        n = sum(p.numel() for p in module.parameters())
+    for name, m in modules.items():
+        n = sum(p.numel() for p in m.parameters())
         total += n
-        print(f"  {name:<18} : {n:>8,} params")
-    print("-" * 55)
-    print(f"  {'합계':<18} : {total:>8,} params")
-    print("=" * 55)
+        print(f"  {name:<20} : {n:>8,} params")
+    print("-" * 60)
+    print(f"  {'합계':<20} : {total:>8,} params")
+    print("=" * 60)
+    print()
+    print("  M 출력 구조:")
+    print(f"    z_next 예측  : MDN (pi, mu, sigma) — 기존")
+    print(f"    r_pred 예측  : scalar MLP          — 신규 추가")
+    print("=" * 60)
 
 
+# ─────────────────────────────────────────────────────────
+# 동작 테스트
+# ─────────────────────────────────────────────────────────
 if __name__ == "__main__":
-    print_model_info()
+    print_model_info(K=8)
     print()
 
-    # 단일 에이전트 동작 테스트
-    agent = WorldModelAgent(num_arms=8, name="WM_Test")
-    print(f"[테스트] obs_dim={cfg.OBS_DIM}, choice 실행...")
-    for step in range(5):
+    agent = WorldModelAgent(num_arms=8, name="WM_Dream_Test")
+    print("[테스트] 300스텝 실행...")
+    for step in range(300):
         arm    = agent.choice()
-        reward = np.random.normal(0.1, 0.05)   # 가짜 보상
+        reward = float(np.random.normal(0.1, 0.05))
         agent.getReward(arm, reward)
-        print(f"  Step {step+1}: arm={arm}, reward={reward:.5f}, ε={agent.epsilon:.3f}")
 
-    print("\n[완료] WorldModelAgent 정상 동작 확인!")
+        if step % 50 == 49:
+            v = np.mean(agent.loss_v_log[-10:])     if agent.loss_v_log     else 0
+            m = np.mean(agent.loss_m_log[-10:])     if agent.loss_m_log     else 0
+            c = np.mean(agent.loss_c_log[-10:])     if agent.loss_c_log     else 0
+            d = np.mean(agent.loss_dream_log[-10:]) if agent.loss_dream_log else 0
+            print(f"  step={step+1:>3} | "
+                  f"V={v:.5f} | M={m:.5f} | "
+                  f"C={c:.5f} | Dream={d:.5f} | "
+                  f"ε={agent.epsilon:.3f}")
+
+    print(f"\n  dream 학습 횟수: {len(agent.loss_dream_log)}")
+    print("[완료] Dream Training 정상 동작 확인!")
