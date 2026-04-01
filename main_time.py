@@ -11,6 +11,7 @@ from agents.epsilon_greedy import EpsilonGreedy
 from agents.ucb import UCBAgent
 from agents.softmax import SoftmaxAgent
 from agents.wsls import WSLS
+from agents.world_model import WorldModelAgent
 
 # 🌟 새롭게 설계한 다이내믹 환경 모듈 임포트
 from arms.stationary_arm import StationaryArm
@@ -140,7 +141,8 @@ def main():
         SoftmaxAgent(env.nbArms, temperature=0.05, name="AI_Softmax_0.05"),
         SoftmaxAgent(env.nbArms, temperature=0.1, name="AI_Softmax_0.1"),
         WSLS(env.nbArms, initial_aspiration=0.12, aspiration_lr=0.05, name="WSLS_I0.12_LR0.05"),
-        WSLS(env.nbArms, initial_aspiration=0.15, aspiration_lr=0.1, name="WSLS_I0.15_LR0.1")
+        WSLS(env.nbArms, initial_aspiration=0.15, aspiration_lr=0.1, name="WSLS_I0.15_LR0.1"),
+        WorldModelAgent(num_arms=env.nbArms, name='WorldModel_Dreamer")
     ]
     agent_names = [agent.name for agent in agents]
     logger.info(f"🤖 참여 에이전트 명단: {agent_names}")
