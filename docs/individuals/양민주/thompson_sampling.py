@@ -19,11 +19,13 @@ class ThompsonSampling(BaseAgent):
     
     Parameters:
         num_arms: arm(선택지)의 개수
+        reward_scale: 보상 스케일 배수 (환경 보상이 작을 때 증폭하여 Beta 분포 업데이트 효율 개선)
         window_size: 최근 N스텝만 기억 (비정상 환경 대응). None이면 전체 기억
         name: 에이전트 이름
     """
-    def __init__(self, num_arms, window_size=None, name="ThompsonSampling"):
+    def __init__(self, num_arms, reward_scale=1.0, window_size=None, name="ThompsonSampling"):
         super().__init__(num_arms, name=name)
+        self.reward_scale = reward_scale
         
         # Beta 분포의 파라미터: alpha(성공), beta(실패)
         # 초기값 (1, 1) = 균등 분포 (아무 정보 없는 상태)
@@ -59,8 +61,8 @@ class ThompsonSampling(BaseAgent):
         # 부모 클래스의 Q-value 업데이트 (공통 통계 유지)
         super().getReward(arm, reward)
         
-        # 보상을 [0, 1]로 클리핑 (Beta 분포 요구사항)
-        r = np.clip(reward, 0.0, 1.0)
+        # 보상을 스케일 보정 후 [0, 1]로 클리핑 (Beta 분포 요구사항)
+        r = np.clip(reward * self.reward_scale, 0.0, 1.0)
         
         if self.window_size is not None:
             # 슬라이딩 윈도우 모드: 최근 N개만 유지
