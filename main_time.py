@@ -11,7 +11,8 @@ from agents.epsilon_greedy import EpsilonGreedy
 from agents.ucb import UCBAgent
 from agents.softmax import SoftmaxAgent
 from agents.wsls import WSLS
-from agents.world_model import WorldModelAgent
+# from agents.world_model import WorldModelAgent
+from agents.sliding_window_ucb import SlidingWindowUCB
 
 # 🌟 새롭게 설계한 다이내믹 환경 모듈 임포트
 from arms.stationary_arm import StationaryArm
@@ -72,7 +73,8 @@ def main():
     arm_configuration = []
 
     # 1-A. 안정적인 캐시카우 라인업 선택 (STATIONARY_REGISTRY 활용)
-    selected_stationary = ["CA_HOBBIES_1", "CA_FOODS_1"]
+    # selected_stationary = ["CA_HOBBIES_1", "CA_FOODS_1"]
+    selected_stationary = ["CA_HOBBIES_1"]
     for name in selected_stationary:
         params = STATIONARY_REGISTRY[name]
         arm = StationaryArm(
@@ -84,7 +86,8 @@ def main():
         logger.info(f"  - [우량주] {name} 조립 완료")
 
     # 1-B. 다이내믹 폭발 라인업 선택 (EVENT_SHOCK_REGISTRY 활용)
-    selected_shocks = ["CA_FOODS_2", "TX_FOODS_2"]
+    # selected_shocks = ["CA_FOODS_2", "TX_FOODS_2"]
+    selected_shocks = ["CA_FOODS_2"]
     for name in selected_shocks:
         params = EVENT_SHOCK_REGISTRY[name]
         arm = EventShockArm(
@@ -98,7 +101,8 @@ def main():
         logger.info(f"  - [다이내믹주] {name} 조립 완료")
 
     # 1-C. 장기 트렌드 성장형 라인업 (Trend)
-    selected_trends = ["CA_HOUSEHOLD_1", "WI_FOODS_2"]
+    # selected_trends = ["CA_HOUSEHOLD_1", "WI_FOODS_2"]
+    selected_trends = ["WI_FOODS_2"]
     for name in selected_trends:
         params = TREND_REGISTRY[name]
         arm = TrendArm(
@@ -111,7 +115,8 @@ def main():
         logger.info(f"  - [트렌드주] {name} 조립 완료")
 
     # 1-D. 국면 전환형 라인업 (Switch)
-    selected_switches = ["TX_HOUSEHOLD_1", "WI_HOUSEHOLD_1"]
+    # selected_switches = ["TX_HOUSEHOLD_1", "WI_HOUSEHOLD_1"]
+    selected_switches = ["TX_HOUSEHOLD_1"]
     for name in selected_switches:
         params = SWITCH_REGISTRY[name]
         arm = SwitchArm(
@@ -133,16 +138,19 @@ def main():
     agents = [
         EpsilonGreedy(env.nbArms, epsilon=0.05, name="AI_Eps_0.05"),
         EpsilonGreedy(env.nbArms, epsilon=0.1, name="AI_Eps_0.1"),
-        EpsilonGreedy(env.nbArms, epsilon=0.2, name="AI_Eps_0.2"),
+        # EpsilonGreedy(env.nbArms, epsilon=0.2, name="AI_Eps_0.2"),
         # EpsilonGreedy(env.nbArms, epsilon=0.3, name="AI_Eps_0.3"),
         # EpsilonGreedy(env.nbArms, epsilon=0.5, name="AI_Eps_0.5"),
         UCBAgent(env.nbArms, c=0.1, name="AI_UCB_0.1"),
-        UCBAgent(env.nbArms, c=0.15, name="AI_UCB_0.15"),
-        SoftmaxAgent(env.nbArms, temperature=0.05, name="AI_Softmax_0.05"),
+        # UCBAgent(env.nbArms, c=0.15, name="AI_UCB_0.15"),
+        # SoftmaxAgent(env.nbArms, temperature=0.05, name="AI_Softmax_0.05"),
         SoftmaxAgent(env.nbArms, temperature=0.1, name="AI_Softmax_0.1"),
-        WSLS(env.nbArms, initial_aspiration=0.12, aspiration_lr=0.05, name="WSLS_I0.12_LR0.05"),
+        # WSLS(env.nbArms, initial_aspiration=0.12, aspiration_lr=0.05, name="WSLS_I0.12_LR0.05"),
         WSLS(env.nbArms, initial_aspiration=0.15, aspiration_lr=0.1, name="WSLS_I0.15_LR0.1"),
-        WorldModelAgent(num_arms=env.nbArms, name='WorldModel_Dreamer")
+        SlidingWindowUCB(env.nbArms, window_size=100, c=0.1, name="SW_UCB_W100_C0.1"),
+        SlidingWindowUCB(env.nbArms, window_size=200, c=0.1, name="SW_UCB_W200_C0.1"),
+        SlidingWindowUCB(env.nbArms, window_size=500, c=0.1, name="SW_UCB_W500_C0.1"),
+        # WorldModelAgent(num_arms=env.nbArms, name='WorldModel_Dreamer")
     ]
     agent_names = [agent.name for agent in agents]
     logger.info(f"🤖 참여 에이전트 명단: {agent_names}")

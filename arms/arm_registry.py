@@ -1,61 +1,34 @@
 # arms/arm_registry.py
 
 """
-월마트 실제 데이터 기반 파라미터 보관소 (Golden Balance Edition)
-- 모든 자산이 1100 ~ 1800 사이의 경쟁력 있는 평균을 가집니다.
-- 초반, 중반, 후반의 승자가 모두 다른 다이내믹한 밸런스입니다.
+월마트 실제 데이터 기반 파라미터 보관소 (16-Arm Master Roster)
+- Monte Carlo 시뮬레이션 시 각 카테고리에서 2개씩 랜덤 차출하여 8개의 시장을 구성합니다.
 """
 
 STATIONARY_REGISTRY = {
-    "CA_HOBBIES_1": {
-        "description": "캘리포니아 취미용품1 (탄탄한 중위권 피난처)",
-        "mean": 1482.4,        
-        "variance": 86278.62    
-    },
-    "CA_FOODS_1": {
-        "description": "캘리포니아 식품1 (무난하고 안정적임)",
-        "mean": 1242.03,
-        "variance": 75377.29    
-    },
+    "CA_HOBBIES_1": {"mean": 1482.4, "variance": 86278.62},
+    "WI_HOBBIES_1": {"mean": 715.02, "variance": 30718.47},
+    "TX_FOODS_1":   {"mean": 675.19, "variance": 28419.22},
+    "WI_HOUSEHOLD_2": {"mean": 334.65, "variance": 5960.63}
 }
 
 EVENT_SHOCK_REGISTRY = {
-    "CA_FOODS_2": {
-        "description": "캘리포니아 식품2 (적절한 수익과 잦은 주말 파동)",
-        "base_mean": 1555.18,
-        "base_variance": 139561.97  
-    },
-    "TX_FOODS_2": {
-        "description": "텍사스 식품2 (다이내믹 2등주)",
-        "base_mean": 1134.98,
-        "base_variance": 65754.61
-    }
+    "WI_FOODS_3": {"base_mean": 4725.38, "base_variance": 1261774.75}, # 🍯 독이 든 성배 (함정)
+    "CA_FOODS_2": {"base_mean": 1555.18, "base_variance": 139561.97},
+    "CA_FOODS_1": {"base_mean": 1242.03, "base_variance": 75377.29},
+    "TX_FOODS_2": {"base_mean": 1134.98, "base_variance": 65754.61}
 }
 
 TREND_REGISTRY = {
-    "CA_HOUSEHOLD_1": {
-        "description": "캘리포니아 생활용품1 (후반 지배형 성장주)",
-        "start_mean": 1568.21,
-        "slope": 1.0285,       # 시뮬레이션 종료 시 약 3500 도달
-        "variance": 375637.94
-    },
-    "WI_FOODS_2": {
-        "description": "위스콘신 식품2 (꼴찌에서 시작해 1등을 노리는 대기만성주)",
-        "start_mean": 594.47,
-        "slope": 0.7540,       # 시뮬레이션 종료 시 약 2000 도달
-        "variance": 182229.05
-    }
+    "CA_HOUSEHOLD_1": {"start_mean": 1568.21, "slope": 1.0285, "variance": 375637.94},
+    "TX_HOUSEHOLD_1": {"start_mean": 1211.36, "slope": 0.6768, "variance": 184853.98},
+    "WI_HOUSEHOLD_1": {"start_mean": 989.69,  "slope": 0.6353, "variance": 176595.24},
+    "WI_FOODS_2":     {"start_mean": 594.47,  "slope": 0.7540, "variance": 182229.05}
 }
 
 SWITCH_REGISTRY = {
-    "TX_HOUSEHOLD_1": {
-        "description": "텍사스 생활용품1 (초반 1등주 -> 특정 기점 대폭락)",
-        "base_mean": 1867.86,
-        "base_variance": 184853.98
-    },
-    "WI_HOUSEHOLD_1": {
-        "description": "위스콘신 생활용품1 (초반 대장주 -> 특정 기점 국면 전환)",
-        "base_mean": 1605.93,
-        "base_variance": 176595.24
-    }
+    "CA_HOUSEHOLD_2": {"base_mean": 816.61, "base_variance": 30144.75},
+    "WI_FOODS_1":     {"base_mean": 756.87, "base_variance": 33666.01},
+    "TX_HOBBIES_1":   {"base_mean": 738.70, "base_variance": 24388.71},
+    "TX_HOUSEHOLD_2": {"base_mean": 415.59, "base_variance": 7434.18}
 }
