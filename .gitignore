@@ -24,3 +24,4 @@ Thumbs.db
 backup/data/walmart/calendar.csv
 backup/data/walmart/sales_train_evaluation.csv
 
+main_dogyeom.py
