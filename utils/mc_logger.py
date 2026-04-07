@@ -45,15 +45,28 @@ class MCLogger:
 
         mean_rewards = df_results.mean()
         std_rewards = df_results.std()
+        
+        # 1등 승률 계산
         win_counts = df_results.idxmax(axis=1).value_counts()
         win_rates = (win_counts / len(df_results)) * 100
+        
+        # 🌟 상위 30% 진입률 계산 🌟
+        num_agents = len(self.agent_names)
+        top_n_threshold = max(1, int(num_agents * 0.3)) # 총 에이전트 수의 30% 등수 컷오프 (예: 10명이면 3등까지)
+        
+        # 각 시드(행)별로 수익률 기반 등수 매기기 (1등이 1, 수익이 높을수록 등수 낮음)
+        ranks = df_results.rank(axis=1, ascending=False, method='min')
+        top_n_counts = (ranks <= top_n_threshold).sum()
+        top_n_rates = (top_n_counts / len(df_results)) * 100
         
         summary_df = pd.DataFrame({
             "Avg Reward": mean_rewards,
             "Risk (Std)": std_rewards,
             "Win Count": win_counts,
-            "Win Rate (%)": win_rates
-        }).fillna(0).sort_values(by="Avg Reward", ascending=False)
+            "Win Rate (%)": win_rates,
+            f"Top 30% Count": top_n_counts,
+            f"Top 30% Rate (%)": top_n_rates
+        }).fillna(0).sort_values(by="Avg Reward", ascending=False) # 여전히 평균 수익 기준으로 정렬
         
         summary_df.to_csv(os.path.join(self.master_dir, "master_scorecard.csv"))
         return summary_df

@@ -39,20 +39,32 @@ def plot_monte_carlo_results(master_output_dir):
     plt.close()
 
     # ==========================================
-    # 🏆 2. 승률 (Bar Chart) - 경고 메시지 픽스
+    # 🏆 2. 승률 (Bar Chart)
     # ==========================================
-    plt.figure(figsize=(12, 6))
-    win_rates = df_score['Win Rate (%)'].sort_values(ascending=False)
-    # hue를 할당하고 legend=False를 주어 FutureWarning 해결
-    ax2 = sns.barplot(x=win_rates.index, y=win_rates.values, hue=win_rates.index, legend=False, palette="rocket")
-    plt.title("MC_02: 에이전트별 승률 (Win Rate %)", fontsize=16, fontweight='bold')
-    plt.ylabel("Win Rate (%)")
+    plt.figure(figsize=(14, 7))
+    
+    # 1등 승률과 상위 30% 진입률 데이터만 추출하여 상위 진입률 기준으로 정렬
+    df_rates = df_score[['Win Rate (%)', 'Top 30% Rate (%)']].sort_values(by='Top 30% Rate (%)', ascending=False)
+    
+    # Pandas 내장 plot 함수를 사용하면 다중 바 차트를 쉽게 그릴 수 있습니다.
+    ax2 = df_rates.plot(kind='bar', figsize=(14, 7), color=['#e74c3c', '#3498db'], edgecolor='black', alpha=0.8)
+    
+    plt.title("MC_02: 에이전트별 1등 승률 및 상위 30% 진입률 (안정성 평가)", fontsize=18, fontweight='bold', pad=20)
+    plt.xlabel("Agent Models", fontsize=14)
+    plt.ylabel("Percentage (%)", fontsize=14)
     plt.ylim(0, 105)
+    plt.legend(["1st Place Win Rate (%)", "Top 30% Entry Rate (%)"], fontsize=12)
+    
+    # 바 위에 퍼센티지 텍스트 추가
     for p in ax2.patches:
-        ax2.annotate(f"{p.get_height():.1f}%", (p.get_x() + p.get_width() / 2., p.get_height()), 
-                     ha='center', va='bottom', fontsize=12)
+        height = p.get_height()
+        if height > 0:
+            ax2.annotate(f"{height:.1f}%", 
+                         (p.get_x() + p.get_width() / 2., height), 
+                         ha='center', va='bottom', fontsize=10, xytext=(0, 3), textcoords='offset points')
+
     plt.tight_layout()
-    plt.savefig(os.path.join(master_output_dir, "MC_02_Win_Rate.png"), dpi=300)
+    plt.savefig(os.path.join(master_output_dir, "MC_02_Win_and_TopN_Rates.png"), dpi=300)
     plt.close()
 
     # ==========================================
@@ -132,27 +144,26 @@ def plot_monte_carlo_results(master_output_dir):
     # ==========================================
     # 🕸️ 6. 스탯 방사형 차트 (Radar Chart - Top 4)
     # ==========================================
-    top_4_agents = agent_names[:4]
-    if len(top_4_agents) >= 3: # 그릴 에이전트가 충분할 때만
-        categories = ['총 수익성(Return)', '안정성(Risk 방어)', '승률(Win Rate)', '트렌드 추종', '함정 회피력']
+    top_4_agents = df_score.sort_values(by='Top 30% Rate (%)', ascending=False).index[:4].tolist()
+    
+    if len(top_4_agents) >= 3:
+        # 평가 지표에 '상위 30% 방어력'을 새롭게 추가!
+        categories = ['총 수익성(Return)', '안정성(Risk 방어)', '상위 30% 방어력', '트렌드 추종', '함정 회피력']
         N = len(categories)
         
-        # 각 지표별 MinMax 스케일링을 위한 데이터 준비
         radar_df = pd.DataFrame(index=top_4_agents, columns=categories)
         
         for agent in top_4_agents:
             radar_df.loc[agent, '총 수익성(Return)'] = df_score.loc[agent, 'Avg Reward']
-            radar_df.loc[agent, '안정성(Risk 방어)'] = 1 / (df_score.loc[agent, 'Risk (Std)'] + 1e-5) # 역수
-            radar_df.loc[agent, '승률(Win Rate)'] = df_score.loc[agent, 'Win Rate (%)']
+            radar_df.loc[agent, '안정성(Risk 방어)'] = 1 / (df_score.loc[agent, 'Risk (Std)'] + 1e-5)
+            # 🌟 Win Rate 대신 Top 30% Rate를 레이더 차트의 주력 지표로 사용!
+            radar_df.loc[agent, '상위 30% 방어력'] = df_score.loc[agent, 'Top 30% Rate (%)']
             
-            # 행동 데이터 바탕 지표 추출
             action_file = os.path.join(agent_logs_dir, f"{agent}_actions.csv")
             if os.path.exists(action_file):
                 df_act = pd.read_csv(action_file)
-                # 후반 20% 스텝에서 트렌드 매장(4,5) 선택 비율
                 late_trend = df_act.iloc[:, int(df_act.shape[1]*0.8):].isin([4,5]).mean().mean()
                 radar_df.loc[agent, '트렌드 추종'] = late_trend
-                # 전체 스텝에서 함정 매장(6,7) 기피 비율 (낮을수록 점수 높음)
                 avoid_switch = 1 - df_act.isin([6,7]).mean().mean()
                 radar_df.loc[agent, '함정 회피력'] = avoid_switch
 
@@ -162,12 +173,11 @@ def plot_monte_carlo_results(master_output_dir):
             if col_max - col_min == 0: radar_df[col] = 1.0
             else: radar_df[col] = (radar_df[col] - col_min) / (col_max - col_min)
             
-        # 레이더 차트 그리기
         angles = [n / float(N) * 2 * pi for n in range(N)]
         angles += angles[:1]
         
-        fig, ax = plt.subplots(figsize=(8, 8), subplot_kw=dict(polar=True))
-        plt.title("MC_06: Top 4 모델 헥사곤 스탯", size=16, fontweight='bold', pad=20)
+        fig, ax = plt.subplots(figsize=(9, 9), subplot_kw=dict(polar=True))
+        plt.title("MC_06: Top 4 모델 헥사곤 스탯 (Top N% 안정성 기준)", size=16, fontweight='bold', pad=20)
         plt.xticks(angles[:-1], categories)
         
         colors = ['b', 'r', 'g', 'm']
