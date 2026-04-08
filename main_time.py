@@ -8,6 +8,7 @@ from datetime import datetime
 from envs.SMPyBandits.Environment.MAB import MAB
 from envs.custom_evaluator import CustomEvaluator
 from agents.epsilon_greedy import EpsilonGreedy
+from agents.decaying_epsilon import DecayingEpsilonGreedy
 from agents.ucb import UCBAgent
 from agents.softmax import SoftmaxAgent
 from agents.wsls import WSLS
@@ -116,7 +117,7 @@ def main():
 
     # 1-D. 국면 전환형 라인업 (Switch)
     # selected_switches = ["TX_HOUSEHOLD_1", "WI_HOUSEHOLD_1"]
-    selected_switches = ["TX_HOUSEHOLD_1"]
+    selected_switches = ["TX_HOUSEHOLD_2"]
     for name in selected_switches:
         params = SWITCH_REGISTRY[name]
         arm = SwitchArm(
@@ -138,6 +139,8 @@ def main():
     agents = [
         EpsilonGreedy(env.nbArms, epsilon=0.05, name="AI_Eps_0.05"),
         EpsilonGreedy(env.nbArms, epsilon=0.1, name="AI_Eps_0.1"),
+        DecayingEpsilonGreedy(env.nbArms, initial_epsilon=0.5, min_epsilon=0.01, decay_rate=0.99, name="DecayEps_0.99"),
+        DecayingEpsilonGreedy(env.nbArms, initial_epsilon=0.5, min_epsilon=0.01, decay_rate=0.995, name="DecayEps_0.995"),
         # EpsilonGreedy(env.nbArms, epsilon=0.2, name="AI_Eps_0.2"),
         # EpsilonGreedy(env.nbArms, epsilon=0.3, name="AI_Eps_0.3"),
         # EpsilonGreedy(env.nbArms, epsilon=0.5, name="AI_Eps_0.5"),
