@@ -14,6 +14,9 @@ from agents.softmax import SoftmaxAgent
 from agents.wsls import WSLS
 # from agents.world_model import WorldModelAgent
 from agents.sliding_window_ucb import SlidingWindowUCB
+from agents.thompson_sampling import ThompsonSampling
+from agents.thompson_weekly import ThompsonWeekendWeekday
+from agents.thompson_collision_aware import ThompsonCollisionAware
 
 # 🌟 새롭게 설계한 다이내믹 환경 모듈 임포트
 from arms.stationary_arm import StationaryArm
@@ -139,8 +142,8 @@ def main():
     agents = [
         EpsilonGreedy(env.nbArms, epsilon=0.05, name="AI_Eps_0.05"),
         EpsilonGreedy(env.nbArms, epsilon=0.1, name="AI_Eps_0.1"),
-        DecayingEpsilonGreedy(env.nbArms, initial_epsilon=0.5, min_epsilon=0.01, decay_rate=0.99, name="DecayEps_0.99"),
-        DecayingEpsilonGreedy(env.nbArms, initial_epsilon=0.5, min_epsilon=0.01, decay_rate=0.995, name="DecayEps_0.995"),
+        # DecayingEpsilonGreedy(env.nbArms, initial_epsilon=0.5, min_epsilon=0.01, decay_rate=0.99, name="DecayEps_0.99"),
+        # DecayingEpsilonGreedy(env.nbArms, initial_epsilon=0.5, min_epsilon=0.01, decay_rate=0.995, name="DecayEps_0.995"),
         # EpsilonGreedy(env.nbArms, epsilon=0.2, name="AI_Eps_0.2"),
         # EpsilonGreedy(env.nbArms, epsilon=0.3, name="AI_Eps_0.3"),
         # EpsilonGreedy(env.nbArms, epsilon=0.5, name="AI_Eps_0.5"),
@@ -153,6 +156,10 @@ def main():
         SlidingWindowUCB(env.nbArms, window_size=100, c=0.1, name="SW_UCB_W100_C0.1"),
         SlidingWindowUCB(env.nbArms, window_size=200, c=0.1, name="SW_UCB_W200_C0.1"),
         SlidingWindowUCB(env.nbArms, window_size=500, c=0.1, name="SW_UCB_W500_C0.1"),
+        # Thompson Sampling 실험
+        ThompsonSampling(env.nbArms, reward_scale=7.0, name="Thompson_x7"),
+        ThompsonWeekendWeekday(env.nbArms, reward_scale=7.0, name="Thompson_Weekend"),
+        ThompsonCollisionAware(env.nbArms, reward_scale=7.0, name="Thompson_CollisionAware"),
         # WorldModelAgent(num_arms=env.nbArms, name='WorldModel_Dreamer")
     ]
     agent_names = [agent.name for agent in agents]
