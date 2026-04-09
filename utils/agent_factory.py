@@ -36,10 +36,56 @@ def get_agent(agent_name: str, nbArms: int):
         키워드 관련되서 파라미터 설정을 잘 해줘야 함.
     """
 
-    # 1. 범용 파라미터 자동 추출 (순서 상관없음, 안 적혀있으면 기본값 적용)
+    # 범용 파라미터 자동 추출
     eps_val = _get_param(agent_name, "e", 0.05)           # Epsilon 값
     c_val   = _get_param(agent_name, "c", 0.05)           # UCB c 값
     w_size  = _get_param(agent_name, "w", 100, True)      # Window 크기
     p_val   = _get_param(agent_name, "p", 7, True)        # Period (주기)
     s_val   = _get_param(agent_name, "s", 10.0)           # Smoothing 파라미터
     tau_val = _get_param(agent_name, "t", 0.1)            # Softmax Temperature
+    
+    # --- [융합 & 고급 UCB 계열] ---
+    if agent_name.startswith("SW_AS_UCB"):
+        return SW_AS_UCB(nbArms, window_size=w_size, period=p_val, c=c_val, smoothing=s_val, name=agent_name)
+        
+    elif agent_name.startswith("AS_UCB"):
+        return AS_UCB(nbArms, period=p_val, c=c_val, smoothing=s_val, name=agent_name)
+        
+    elif agent_name.startswith("SW_UCB"):
+        return SlidingWindowUCB(nbArms, window_size=w_size, c=c_val, name=agent_name)
+
+    elif agent_name.startswith("FFT_UCB"):
+        return FFT_UCB(nbArms, name=agent_name)  # 팀원 코드의 init에 맞게 파라미터 추가 필요
+        
+    elif agent_name.startswith("Periodic_UCB"):
+        return PeriodicUCB(nbArms, period=p_val, name=agent_name)
+
+    # --- [기본 UCB 계열] ---
+    elif agent_name.startswith("UCB"):
+        return UCBAgent(nbArms, c=c_val, name=agent_name)
+
+    # --- [Epsilon & Heuristic 계열] ---
+    elif agent_name.startswith("DecayEps"):
+        return DecayingEpsilon(nbArms, initial_epsilon=eps_val, name=agent_name)
+        
+    elif agent_name.startswith("Eps"):
+        return EpsilonGreedy(nbArms, epsilon=eps_val, name=agent_name)
+        
+    elif agent_name.startswith("Softmax"):
+        return SoftmaxAgent(nbArms, temperature=tau_val, name=agent_name)
+        
+    elif agent_name.startswith("WSLS"):
+        return WSLS(nbArms, name=agent_name)
+
+    # --- [Thompson Sampling 계열] ---
+    elif agent_name.startswith("TS_Collision_Aware"):
+        return ThompsonCollisionAware(nbArms, name=agent_name)
+        
+    elif agent_name.startswith("TS_Weekly"):
+        return ThompsonWeekly(nbArms, period=p_val, name=agent_name)
+        
+    elif agent_name.startswith("TS"):
+        return ThompsonSampling(nbArms, name=agent_name)
+
+    # 매칭되는 이름이 없을 경우 에러 발생
+    raise ValueError(f"팩토리에 등록되지 않은 알고리즘 이름입니다: {agent_name}")
