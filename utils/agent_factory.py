@@ -3,17 +3,17 @@ import re
 # 개별 알고리즘 목록 정리
 # 팀원분들 모두 각자 제작한 알고리즘은 제작 이후 여기에 추가해주세요.
 from agents.epsilon_greedy import EpsilonGreedy
-from agents.decaying_epsilon import DecayingEpsilon
+from agents.decaying_epsilon import DecayingEpsilonGreedy
 from agents.ucb import UCBAgent
 from agents.sliding_window_ucb import SlidingWindowUCB
 from agents.as_ucb import AS_UCB
 from agents.sw_as_ucb import SW_AS_UCB
 from agents.softmax import SoftmaxAgent
 from agents.wsls import WSLS
-from agents.fft_ucb import FFT_UCB
+from agents.fft_ucb import FFTPeriodicUCB
 from agents.periodic_ucb import PeriodicUCB
 from agents.thompson_sampling import ThompsonSampling
-from agents.thompson_weekly import ThompsonWeekly
+from agents.thompson_weekly import ThompsonWeekendWeekday
 from agents.thompson_collision_aware import ThompsonCollisionAware
 
 def _get_param(agent_name: str, key: str, default: float, is_int: bool = False):
@@ -55,7 +55,7 @@ def get_agent(agent_name: str, nbArms: int):
         return SlidingWindowUCB(nbArms, window_size=w_size, c=c_val, name=agent_name)
 
     elif agent_name.startswith("FFT_UCB"):
-        return FFT_UCB(nbArms, name=agent_name)  # 팀원 코드의 init에 맞게 파라미터 추가 필요
+        return FFTPeriodicUCB(nbArms, c=c_val, warmup_rounds=w_size, sin_weight=s_val, name=agent_name)
         
     elif agent_name.startswith("Periodic_UCB"):
         return PeriodicUCB(nbArms, period=p_val, name=agent_name)
@@ -66,7 +66,7 @@ def get_agent(agent_name: str, nbArms: int):
 
     # --- [Epsilon & Heuristic 계열] ---
     elif agent_name.startswith("DecayEps"):
-        return DecayingEpsilon(nbArms, initial_epsilon=eps_val, name=agent_name)
+        return DecayingEpsilonGreedy(nbArms, initial_epsilon=eps_val, decay_rate=0.99, name=agent_name)
         
     elif agent_name.startswith("Eps"):
         return EpsilonGreedy(nbArms, epsilon=eps_val, name=agent_name)
@@ -82,7 +82,7 @@ def get_agent(agent_name: str, nbArms: int):
         return ThompsonCollisionAware(nbArms, name=agent_name)
         
     elif agent_name.startswith("TS_Weekly"):
-        return ThompsonWeekly(nbArms, period=p_val, name=agent_name)
+        return ThompsonWeekendWeekday(nbArms, name=agent_name)
         
     elif agent_name.startswith("TS"):
         return ThompsonSampling(nbArms, name=agent_name)
