@@ -20,7 +20,8 @@ class CustomEvaluator:
         return base_reward / (num_collisions ** PENALTY_FACTOR)
 
     def run_simulation(self):
-        for t in tqdm(range(self.horizon), desc="🏃 시뮬레이션 진행 중", ncols=100, ascii=False):
+        # for t in tqdm(range(self.horizon), desc="🏃 시뮬레이션 진행 중", ncols=100, ascii=False, leave=False):
+        for t in range(self.horizon):
             choices = [agent.choice() for agent in self.agents]
             self.actions_log[:, t] = choices
 
