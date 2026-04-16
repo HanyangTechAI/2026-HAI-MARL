@@ -18,12 +18,21 @@ from agents.thompson_sampling import ThompsonSampling
 from agents.thompson_weekly import ThompsonWeekendWeekday
 from agents.thompson_collision_aware import ThompsonCollisionAware
 
+# 🌟 Contextual Bandit 알고리즘 임포트
+import sys
+sys.path.append('docs/individuals/양민주')
+from lin_ucb import LinUCB
+from lasso_bandit import LassoBandit
+
 # 🌟 새롭게 설계한 다이내믹 환경 모듈 임포트
 from arms.stationary_arm import StationaryArm
 from arms.event_shock_arm import EventShockArm
 from arms.trend_arm import TrendArm
 from arms.switch_arm import SwitchArm
 from arms.arm_registry import STATIONARY_REGISTRY, EVENT_SHOCK_REGISTRY, TREND_REGISTRY, SWITCH_REGISTRY
+
+# Context Builder 임포트
+from utils.context_builder import ContextBuilder
 
 # 시각화 모듈
 from utils.plot_results import plot_experiment_results
@@ -135,32 +144,65 @@ def main():
     env = MAB(arm_configuration)
     
     logger.info(f"📊 총 {env.nbArms}개의 물류 라인(Arm)이 전장에 배치되었습니다.")
+    
+    # 🌟 Arm 이름 리스트 생성 (Context Builder용)
+    arm_names = selected_stationary + selected_shocks + selected_trends + selected_switches
+    logger.info(f"📋 Arm 명단: {arm_names}")
+    
+    # 🌟 Context Builder 초기화
+    logger.info("🔧 Context Builder를 초기화합니다...")
+    context_builder = ContextBuilder(arm_names)
+    logger.info(f"✅ Context feature dimension: {context_builder.feature_dim}")
 
     # ==========================================
     # 2. 에이전트 라인업 구성
     # ==========================================
     agents = [
-        EpsilonGreedy(env.nbArms, epsilon=0.05, name="AI_Eps_0.05"),
-        EpsilonGreedy(env.nbArms, epsilon=0.1, name="AI_Eps_0.1"),
+        # 기본 알고리즘 (Baseline)
+        EpsilonGreedy(env.nbArms, epsilon=0.05, name="Eps_0.05"),
+        EpsilonGreedy(env.nbArms, epsilon=0.1, name="Eps_0.1"),
+        UCBAgent(env.nbArms, c=0.1, name="UCB_0.1"),
+        
+        # 🌟 Thompson Collision Aware 파라미터 튜닝 실험
+        # 현재 기본값
+        ThompsonCollisionAware(env.nbArms, reward_scale=7.0, collision_penalty_rate=0.5, 
+                              penalty_decay=0.95, name="TC_r7.0_p0.5_d0.95"),
+        
+        # 조합 1: reward_scale 증가 + penalty 완화
+        ThompsonCollisionAware(env.nbArms, reward_scale=10.0, collision_penalty_rate=0.3, 
+                              penalty_decay=0.98, name="TC_r10.0_p0.3_d0.98"),
+        
+        # 조합 2: reward_scale 더 증가 + penalty 중간
+        ThompsonCollisionAware(env.nbArms, reward_scale=15.0, collision_penalty_rate=0.4, 
+                              penalty_decay=0.98, name="TC_r15.0_p0.4_d0.98"),
+        
+        # 조합 3: reward_scale 중간 + penalty 중간
+        ThompsonCollisionAware(env.nbArms, reward_scale=10.0, collision_penalty_rate=0.4, 
+                              penalty_decay=0.97, name="TC_r10.0_p0.4_d0.97"),
+        
+        # 조합 4: reward_scale 낮춤 + penalty 완화
+        ThompsonCollisionAware(env.nbArms, reward_scale=5.0, collision_penalty_rate=0.3, 
+                              penalty_decay=0.98, name="TC_r5.0_p0.3_d0.98"),
+        
+        # 조합 5: reward_scale 높음 + penalty 강화
+        ThompsonCollisionAware(env.nbArms, reward_scale=12.0, collision_penalty_rate=0.5, 
+                              penalty_decay=0.96, name="TC_r12.0_p0.5_d0.96"),
+        
+        # 주석 처리된 알고리즘들
+        # SoftmaxAgent(env.nbArms, temperature=0.1, name="AI_Softmax_0.1"),
+        # WSLS(env.nbArms, initial_aspiration=0.15, aspiration_lr=0.1, name="WSLS_I0.15_LR0.1"),
         # DecayingEpsilonGreedy(env.nbArms, initial_epsilon=0.5, min_epsilon=0.01, decay_rate=0.99, name="DecayEps_0.99"),
-        # DecayingEpsilonGreedy(env.nbArms, initial_epsilon=0.5, min_epsilon=0.01, decay_rate=0.995, name="DecayEps_0.995"),
-        # EpsilonGreedy(env.nbArms, epsilon=0.2, name="AI_Eps_0.2"),
-        # EpsilonGreedy(env.nbArms, epsilon=0.3, name="AI_Eps_0.3"),
-        # EpsilonGreedy(env.nbArms, epsilon=0.5, name="AI_Eps_0.5"),
-        UCBAgent(env.nbArms, c=0.1, name="AI_UCB_0.1"),
-        # UCBAgent(env.nbArms, c=0.15, name="AI_UCB_0.15"),
-        # SoftmaxAgent(env.nbArms, temperature=0.05, name="AI_Softmax_0.05"),
-        SoftmaxAgent(env.nbArms, temperature=0.1, name="AI_Softmax_0.1"),
-        # WSLS(env.nbArms, initial_aspiration=0.12, aspiration_lr=0.05, name="WSLS_I0.12_LR0.05"),
-        WSLS(env.nbArms, initial_aspiration=0.15, aspiration_lr=0.1, name="WSLS_I0.15_LR0.1"),
-        SlidingWindowUCB(env.nbArms, window_size=100, c=0.1, name="SW_UCB_W100_C0.1"),
-        SlidingWindowUCB(env.nbArms, window_size=200, c=0.1, name="SW_UCB_W200_C0.1"),
-        SlidingWindowUCB(env.nbArms, window_size=500, c=0.1, name="SW_UCB_W500_C0.1"),
-        # Thompson Sampling 실험
-        ThompsonSampling(env.nbArms, reward_scale=7.0, name="Thompson_x7"),
-        ThompsonWeekendWeekday(env.nbArms, reward_scale=7.0, name="Thompson_Weekend"),
-        ThompsonCollisionAware(env.nbArms, reward_scale=7.0, name="Thompson_CollisionAware"),
-        # WorldModelAgent(num_arms=env.nbArms, name='WorldModel_Dreamer")
+        
+        # Contextual Bandit (성능 낮아서 제외)
+        # LinUCB(env.nbArms, feature_dim=context_builder.feature_dim, alpha=1.0, lambda_reg=1.0, name="LinUCB_a1.0"),
+        # LassoBandit(env.nbArms, feature_dim=context_builder.feature_dim, alpha=1.0, lambda_l1=0.1, lambda_l2=1.0, name="Lasso_l1_0.1"),
+        
+        # Sliding Window UCB (주석 처리)
+        # SlidingWindowUCB(env.nbArms, window_size=100, c=0.1, name="SW_UCB_W100_C0.1"),
+        
+        # Thompson Sampling 기본 (비교용)
+        # ThompsonSampling(env.nbArms, reward_scale=7.0, name="Thompson_x7"),
+        # ThompsonWeekendWeekday(env.nbArms, reward_scale=7.0, name="Thompson_Weekend"),
     ]
     agent_names = [agent.name for agent in agents]
     logger.info(f"🤖 참여 에이전트 명단: {agent_names}")
@@ -169,7 +211,8 @@ def main():
     # 3. 심판 배정 및 시뮬레이션 실행
     # ==========================================
     logger.info("⚔️ 시뮬레이션을 가동합니다...")
-    evaluator = CustomEvaluator(env, agents, horizon=HORIZON, global_scaler=GLOBAL_SCALER)
+    evaluator = CustomEvaluator(env, agents, horizon=HORIZON, global_scaler=GLOBAL_SCALER, 
+                                context_builder=context_builder)
     rewards_log, actions_log = evaluator.run_simulation()
     logger.info("🏁 시뮬레이션 루프 완료!")
 
