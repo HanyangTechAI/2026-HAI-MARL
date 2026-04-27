@@ -12,11 +12,18 @@ from agents.decaying_epsilon import DecayingEpsilonGreedy
 from agents.ucb import UCBAgent
 from agents.softmax import SoftmaxAgent
 from agents.wsls import WSLS
-# from agents.world_model import WorldModelAgent
+from agents.world_model import WorldModelAgent
 from agents.sliding_window_ucb import SlidingWindowUCB
 from agents.thompson_sampling import ThompsonSampling
 from agents.thompson_weekly import ThompsonWeekendWeekday
 from agents.thompson_collision_aware import ThompsonCollisionAware
+from agents.lstm_attention_ucb import LSTMAttentionUCBAgent
+from agents.lstm_ucb import LSTMUCBAgent
+from agents.fft_ucb import FFTPeriodicUCB
+from agents.periodic_ucb import PeriodicUCB
+from agents.as_ucb import AS_UCB
+from agents.sw_as_ucb import SW_AS_UCB
+from agents.sw_decay_epsilon import SWDecayEpsilonGreedy
 
 # 🌟 Contextual Bandit 알고리즘 임포트
 import sys
@@ -158,51 +165,26 @@ def main():
     # 2. 에이전트 라인업 구성
     # ==========================================
     agents = [
-        # 기본 알고리즘 (Baseline)
         EpsilonGreedy(env.nbArms, epsilon=0.05, name="Eps_0.05"),
-        EpsilonGreedy(env.nbArms, epsilon=0.1, name="Eps_0.1"),
+        DecayingEpsilonGreedy(env.nbArms, initial_epsilon=0.5, min_epsilon=0.01, decay_rate=0.995, name="DecayEps_0.995"),
         UCBAgent(env.nbArms, c=0.1, name="UCB_0.1"),
-        
-        # 🌟 Thompson Collision Aware 파라미터 튜닝 실험
-        # 현재 기본값
-        ThompsonCollisionAware(env.nbArms, reward_scale=7.0, collision_penalty_rate=0.5, 
-                              penalty_decay=0.95, name="TC_r7.0_p0.5_d0.95"),
-        
-        # 조합 1: reward_scale 증가 + penalty 완화
-        ThompsonCollisionAware(env.nbArms, reward_scale=10.0, collision_penalty_rate=0.3, 
-                              penalty_decay=0.98, name="TC_r10.0_p0.3_d0.98"),
-        
-        # 조합 2: reward_scale 더 증가 + penalty 중간
-        ThompsonCollisionAware(env.nbArms, reward_scale=15.0, collision_penalty_rate=0.4, 
-                              penalty_decay=0.98, name="TC_r15.0_p0.4_d0.98"),
-        
-        # 조합 3: reward_scale 중간 + penalty 중간
-        ThompsonCollisionAware(env.nbArms, reward_scale=10.0, collision_penalty_rate=0.4, 
-                              penalty_decay=0.97, name="TC_r10.0_p0.4_d0.97"),
-        
-        # 조합 4: reward_scale 낮춤 + penalty 완화
-        ThompsonCollisionAware(env.nbArms, reward_scale=5.0, collision_penalty_rate=0.3, 
-                              penalty_decay=0.98, name="TC_r5.0_p0.3_d0.98"),
-        
-        # 조합 5: reward_scale 높음 + penalty 강화
-        ThompsonCollisionAware(env.nbArms, reward_scale=12.0, collision_penalty_rate=0.5, 
-                              penalty_decay=0.96, name="TC_r12.0_p0.5_d0.96"),
-        
-        # 주석 처리된 알고리즘들
-        # SoftmaxAgent(env.nbArms, temperature=0.1, name="AI_Softmax_0.1"),
-        # WSLS(env.nbArms, initial_aspiration=0.15, aspiration_lr=0.1, name="WSLS_I0.15_LR0.1"),
-        # DecayingEpsilonGreedy(env.nbArms, initial_epsilon=0.5, min_epsilon=0.01, decay_rate=0.99, name="DecayEps_0.99"),
-        
-        # Contextual Bandit (성능 낮아서 제외)
-        # LinUCB(env.nbArms, feature_dim=context_builder.feature_dim, alpha=1.0, lambda_reg=1.0, name="LinUCB_a1.0"),
-        # LassoBandit(env.nbArms, feature_dim=context_builder.feature_dim, alpha=1.0, lambda_l1=0.1, lambda_l2=1.0, name="Lasso_l1_0.1"),
-        
-        # Sliding Window UCB (주석 처리)
-        # SlidingWindowUCB(env.nbArms, window_size=100, c=0.1, name="SW_UCB_W100_C0.1"),
-        
-        # Thompson Sampling 기본 (비교용)
-        # ThompsonSampling(env.nbArms, reward_scale=7.0, name="Thompson_x7"),
-        # ThompsonWeekendWeekday(env.nbArms, reward_scale=7.0, name="Thompson_Weekend"),
+        SoftmaxAgent(env.nbArms, temperature=0.1, name="Softmax_0.1"),
+        WSLS(env.nbArms, initial_aspiration=0.15, aspiration_lr=0.1, name="WSLS_I0.15_LR0.1"),
+        SlidingWindowUCB(env.nbArms, window_size=200, c=0.1, name="SW_UCB_W200_C0.1"),
+        ThompsonSampling(env.nbArms, reward_scale=7.0, name="Thompson_x7"),
+        ThompsonWeekendWeekday(env.nbArms, reward_scale=7.0, name="Thompson_Weekend"),
+        ThompsonCollisionAware(env.nbArms, reward_scale=15.0, collision_penalty_rate=0.4, penalty_decay=0.98, name="TC_r15.0_p0.4_d0.98"),
+        LSTMAttentionUCBAgent(env.nbArms, name="LSTM_Attn_UCB"),
+        LSTMUCBAgent(env.nbArms, name="LSTM_UCB"),
+        FFTPeriodicUCB(env.nbArms, name="FFT_Periodic_UCB"),
+        PeriodicUCB(env.nbArms, name="Periodic_UCB"),
+        AS_UCB(env.nbArms, name="AS_UCB"),
+        SW_AS_UCB(env.nbArms, name="SW_AS_UCB"),
+        WorldModelAgent(env.nbArms, name="WorldModel"),
+        LinUCB(env.nbArms, feature_dim=context_builder.feature_dim, alpha=1.0, lambda_reg=1.0, name="LinUCB_a1.0"),
+        LassoBandit(env.nbArms, feature_dim=context_builder.feature_dim, alpha=1.0, lambda_l1=0.1, lambda_l2=1.0, name="Lasso_l1_0.1"),
+        # 🌟 하이브리드 신규 에이전트
+        SWDecayEpsilonGreedy(env.nbArms, window_size=200, initial_epsilon=0.8, min_epsilon=0.01, decay_rate=0.995, explore_temp=0.3, name="SW_DecayEps_W200"),
     ]
     agent_names = [agent.name for agent in agents]
     logger.info(f"🤖 참여 에이전트 명단: {agent_names}")
