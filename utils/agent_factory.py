@@ -43,6 +43,9 @@ def get_agent(agent_name: str, nbArms: int):
     p_val   = _get_param(agent_name, "p", 7, True)        # Period (주기)
     s_val   = _get_param(agent_name, "s", 10.0)           # Smoothing 파라미터
     tau_val = _get_param(agent_name, "t", 0.1)            # Softmax Temperature
+    decay_val = _get_param(agent_name, "d", 0.995)        # 감쇠율 (DecayEps의 핵심, 기본값 0.995)
+    scale_val = _get_param(agent_name, "r", 7.0)          # 보상 스케일 (Thompson의 핵심, 기본값 7.0)
+    pen_val   = _get_param(agent_name, "cp", 0.5)         # 충돌 페널티 비율 (Collision Aware 핵심)
     
     # --- [융합 & 고급 UCB 계열] ---
     if agent_name.startswith("SW_AS_UCB"):
@@ -66,7 +69,8 @@ def get_agent(agent_name: str, nbArms: int):
 
     # --- [Epsilon & Heuristic 계열] ---
     elif agent_name.startswith("DecayEps"):
-        return DecayingEpsilonGreedy(nbArms, initial_epsilon=eps_val, decay_rate=0.99, name=agent_name)
+        # 초기 탐색률은 논문 실험 최고치였던 0.5로 고정하고, 감쇠율은 추출값(기본 0.995) 사용
+        return DecayingEpsilonGreedy(nbArms, initial_epsilon=0.5, min_epsilon=eps_val, decay_rate=decay_val, name=agent_name)
         
     elif agent_name.startswith("Eps"):
         return EpsilonGreedy(nbArms, epsilon=eps_val, name=agent_name)
@@ -79,13 +83,13 @@ def get_agent(agent_name: str, nbArms: int):
 
     # --- [Thompson Sampling 계열] ---
     elif agent_name.startswith("TS_Collision_Aware"):
-        return ThompsonCollisionAware(nbArms, name=agent_name)
+        return ThompsonCollisionAware(nbArms, reward_scale=scale_val, collision_penalty_rate=pen_val, penalty_decay=0.95, name=agent_name)
         
     elif agent_name.startswith("TS_Weekly"):
-        return ThompsonWeekendWeekday(nbArms, name=agent_name)
+        return ThompsonWeekendWeekday(nbArms, reward_scale=scale_val, name=agent_name)
         
     elif agent_name.startswith("TS"):
-        return ThompsonSampling(nbArms, name=agent_name)
+        return ThompsonSampling(nbArms, reward_scale=scale_val, name=agent_name)
 
     # 매칭되는 이름이 없을 경우 에러 발생
-    raise ValueError(f"팩토리에 등록되지 않은 알고리즘 이름입니다: {agent_name}")
+    raise ValueError(f"🚨 팩토리에 등록되지 않은 알고리즘 이름입니다: {agent_name}")
