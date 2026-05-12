@@ -9,10 +9,10 @@ venv/
 env/
 
 # 3. 실험 결과 및 데이터
-results/logs/*.csv
-results/logs/*.json
-results/plots/*.png
-results/plots/*.pdf
+# results/logs/*.csv
+# results/logs/*.json
+# results/plots/*.png
+# results/plots/*.pdf
 
 # 4. 에디터 및 OS 설정 파일
 .vscode/
@@ -29,15 +29,14 @@ PERSONAL_AI_GUIDELINES.md
 # main.py
 # main_time.py
 # main_benchmark.py
-calculate_top_agents.py
+# calculate_top_agents.py
 
 # 추가적으로 필요한 예외가 있으면 아래에 추가할 것
-backup/data/walmart/calendar.csv
-backup/data/walmart/sales_train_evaluation.csv
+# backup/data/walmart/calendar.csv
+# backup/data/walmart/sales_train_evaluation.csv
 
 # main_dogyeom.py
-trueskill*
+# trueskill*
 
 # 7. 임시 탐색 튜닝 스크립트 및 결과 아웃풋 폴더
 # output/
-*search_decay_eps.py
