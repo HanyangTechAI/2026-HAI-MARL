@@ -11,7 +11,7 @@ import trueskill
 import re
 import warnings
 from contextlib import redirect_stdout
-import concurrent.futures  # 🌟 멀티프로세싱을 위한 모듈
+import concurrent.futures
 
 from envs.custom_evaluator import CustomEvaluator
 from utils.env_builder import build_dynamic_market
@@ -41,8 +41,7 @@ def extract_family_and_params(agent_name):
     c_val = float(re.search(r'_c([0-9.]+)', agent_name).group(1)) if '_c' in agent_name else None
     return family, c_val
 
-# 🌟 [NEW] 독립된 프로세스(CPU 코어)에서 병렬로 실행될 단일 시뮬레이션 함수
-# (Windows 멀티프로세싱 규칙상 최상단 레벨에 정의되어야 합니다.)
+#  독립된 프로세스(CPU 코어)에서 병렬로 실행될 단일 시뮬레이션 함수
 def run_single_match(match_size, selected_players, horizon):
     with open(os.devnull, 'w') as f, redirect_stdout(f):
         market_env, _ = build_dynamic_market("random")
@@ -77,18 +76,16 @@ def main():
     stats = {name: {"matches": 0, "wins": 0, "top30": 0} for name in candidates}
     stats_by_size = {size: {name: {"matches": 0, "top30": 0} for name in candidates} for size in match_sizes}
 
-    # 매치업 세팅 사전 준비
     match_configs = []
     for _ in range(args.matches):
         size = random.choice(match_sizes)
         players = random.sample(candidates, size)
         match_configs.append((size, players, args.horizon))
 
-    # 🌟 CPU 코어 개수 확인 (1개는 시스템용으로 남겨둠)
+    # CPU 코어 개수 확인 
     max_workers = max(1, os.cpu_count() - 1)
     print(f"⚡ CPU 코어 {max_workers}개를 풀가동하여 병렬 처리를 시작합니다...")
 
-    # 🌟 멀티프로세싱 풀(Pool) 가동
     with tqdm(total=args.matches, desc="⚡ 병렬 매치메이킹", file=sys.stdout, position=0, leave=True, dynamic_ncols=True, ascii=False) as pbar:
         
         # 멀티프로세싱 풀 가동
@@ -113,7 +110,6 @@ def main():
                 for i, name in enumerate(players): 
                     ratings[name] = new_ratings[i][0]
                     
-                # 🌟 [핵심] 한 판이 끝날 때마다 바를 1씩 전진시킵니다.
                 pbar.update(1)
 
     # 정규화 및 결과 집계
@@ -156,13 +152,13 @@ def main():
     
     save_path = os.path.join(output_dir, "Leaderboard_Detailed.csv")
     df_leaderboard.to_csv(save_path, index_label="Rank")
-    print(f"\n✅ 완료! 결과 파일이 {output_dir} 에 저장되었습니다.")
+    print(f"\n 완료! 결과 파일이 {output_dir} 에 저장되었습니다.")
     
     try:
         from utils.plot_trueskill import plot_trueskill_results
         plot_trueskill_results(save_path, output_dir)
     except Exception as e:
-        print(f"⚠️ 시각화 모듈 에러: {e}")
+        print(f"시각화 모듈 에러: {e}")
 
 if __name__ == "__main__":
     main()
