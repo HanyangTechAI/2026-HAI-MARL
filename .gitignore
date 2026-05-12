@@ -26,16 +26,16 @@ PERSONAL_AI_GUIDELINES.md
 
 # 6. 팀 공유 코드 (개인 수정본은 git에 올리지 않음)
 # → 새로 만든 agents/ 파일만 push할 것
-main.py
-main_time.py
-main_benchmark.py
+# main.py
+# main_time.py
+# main_benchmark.py
 calculate_top_agents.py
 
 # 추가적으로 필요한 예외가 있으면 아래에 추가할 것
 backup/data/walmart/calendar.csv
 backup/data/walmart/sales_train_evaluation.csv
 
-main_dogyeom.py
+# main_dogyeom.py
 trueskill*
 
 # 7. 임시 탐색 튜닝 스크립트 및 결과 아웃풋 폴더
