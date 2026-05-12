@@ -82,7 +82,7 @@ def main():
         players = random.sample(candidates, size)
         match_configs.append((size, players, args.horizon))
 
-    # CPU 코어 개수 확인 
+    # CPU 코어 개수 확인
     max_workers = max(1, os.cpu_count() - 1)
     print(f"⚡ CPU 코어 {max_workers}개를 풀가동하여 병렬 처리를 시작합니다...")
 
@@ -95,7 +95,7 @@ def main():
             for future in concurrent.futures.as_completed(futures):
                 players, ranks, winner_idx, top30_indices, match_size = future.result()
                 
-                # 승리 통계 업데이트
+                # 통계 업데이트
                 stats[players[winner_idx]]["wins"] += 1
                 for i, p in enumerate(players):
                     stats[p]["matches"] += 1
