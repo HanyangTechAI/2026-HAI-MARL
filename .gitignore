@@ -39,5 +39,5 @@ main_dogyeom.py
 trueskill*
 
 # 7. 임시 탐색 튜닝 스크립트 및 결과 아웃풋 폴더
-output/
+# output/
 *search_decay_eps.py
