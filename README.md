@@ -9,6 +9,12 @@ This project is a comprehensive Multi-Agent Reinforcement Learning (MARL) testbe
 - Algorithm Battle Royale: A massive competitive ecosystem featuring over 57 different RL algorithms, ranging from human-like heuristics and classical statistics to complex RL algorithms.
 - TrueSkill Evaluation: Introduces an objective, relative rating system based on TrueSkill to evaluate the true strategic robustness of agents amidst severe market noise.
 
+## 🏗️ Research Framework
+
+![Research Framework](docs/images/research_framework.png)
+
+Our research follows a systematic 4-phase approach to analyze algorithm performance in non-stationary market environments with collision penalties.
+
 ## Conclusion
 
 ### Summary of Experimental Results
