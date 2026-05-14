@@ -48,7 +48,7 @@ A collection of exploration-exploitation algorithms for multi-armed bandit and r
 | `lstm_ucb.py` | LSTM-UCB. An LSTM encodes the sequence of (action, reward) history into a hidden state. UCB exploration is applied on top of the predicted Q-values. |
 | `lstm_attention_ucb.py` | LSTM + Self-Attention + Cross-Attention UCB. Extends `lstm_ucb` with a self-attention mechanism over the LSTM output sequence and cross-attention between arm embeddings and the encoded context. Strongest model in the collection. |
 | `world_model.py` | Latent World Model. Learns a compact latent representation of environment dynamics. Enables planning via imagined rollouts before committing to an action. |
-)
+
 
 
 
