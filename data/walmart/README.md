@@ -1,15 +1,15 @@
 # 🛒 Walmart M5 Data Processing for MARL Environment
 
-## Description
+## 📚: Description
 Real-world financial and retail markets aren't just random dice rolls. Sales spike on weekends, and demand explodes exponentially during holidays like Black Friday.
 
 It contains the data processing and feature extraction pipeline designed for Multi-Agent Reinforcement Learning simulator. To ensure our Ai agents train in a highly realistic "Non-stationary Environment", this pipeline extracts the market's core features from 5 years(1,941 days) of Walmart sales records.
 
 ---
 
-## 📂 파일 구조 및 설명
+## 📂 File Structure& Core Guide
 
-### 1. 📊 원본 데이터 (Raw Data)
+### 1. 📊 Processed Environmental Data
 * `sales_train_evaluation.csv`
   * 5년(1,941일) 간의 캘리포니아(CA), 텍사스(TX), 위스콘신(WI) 지역 일일 판매량(Unit Sales) 원본 데이터.
 * `calendar.csv`
