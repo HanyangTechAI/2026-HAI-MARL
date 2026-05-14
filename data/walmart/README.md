@@ -1,8 +1,9 @@
 # 🛒 Walmart M5 Data Processing for MARL Environment
 
-이 폴더는 다중 에이전트 강화학습(MARL) 시뮬레이션의 '다이내믹 물류 환경(Non-stationary Environment)'을 구축하기 위한 **Kaggle 월마트 M5 원본 데이터**와 **특징 추출(Feature Extraction) 파이프라인**을 포함하고 있습니다.
+## Description
+Real-world financial and retail markets aren't just random dice rolls. Sales spike on weekends, and demand explodes exponentially during holidays like Black Friday.
 
-단순한 과거 평균값이 아니라, 실제 소비자의 요일별 소비 패턴(Seasonality)과 돌발 이벤트(Shock)를 시뮬레이터(Arm)에 주입하기 위해 사용됩니다.
+It contains the data processing and feature extraction pipeline designed for Multi-Agent Reinforcement Learning simulator. To ensure our Ai agents train in a highly realistic "Non-stationary Environment", this pipeline extracts the market's core features from 5 years(1,941 days) of Walmart sales records.
 
 ---
 
